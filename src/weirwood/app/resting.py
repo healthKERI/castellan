@@ -27,9 +27,50 @@ from weirwood.app.api.issued_credential import (
 from weirwood.app.api.received_credential import (
     ReceivedCredentialCollectionEnd, ReceivedCredentialResourceEnd
 )
-from weirwood.core.services import IssuedCredentialService, ReceivedCredentialService
+from weirwood.app.api.registrar import (
+    RegistrarTelCollectionEnd, RegistrarTelResourceEnd, RegistrarOobiEnd
+)
+from weirwood.app.api.message import MessageCollectionEnd, MessageResourceEnd
+from weirwood.core.services import (
+    IssuedCredentialService, ReceivedCredentialService,
+    TelEventService, MessageService,
+)
 
 logger = ogler.getLogger()
+
+
+def _register_registrar_endpoint(hab, parser, host, port):
+    """
+    Register weirwood's HTTP location and registrar end-role in its KERI database
+    so that hab.replyToOobi(role='registrar') can serve a valid OOBI reply.
+
+    Writes signed /loc/scheme and /end/role/add reply events into the hab's
+    LMDB via the supplied parser/rvy.  Idempotent — safe to call on every
+    startup; existing entries are overwritten with fresh timestamps.
+    """
+    try:
+        scheme = kering.Schemes.http
+        url = f"http://{host}:{port}"
+
+        # Build signed reply events (bytearray streams)
+        loc_msgs = hab.makeLocScheme(url=url, scheme=scheme)
+        role_msgs = hab.makeEndRole(eid=hab.pre, role=kering.Roles.registrar)
+
+        # Process each event stream in-place to persist to LMDB
+        for msgs in (loc_msgs, role_msgs):
+            if msgs:
+                ims = bytearray(msgs)
+                parser.parse(ims=ims)
+
+        logger.info(
+            f"Registered weirwood registrar endpoint: {url} "
+            f"(eid={hab.pre}, role={kering.Roles.registrar})"
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not register registrar OOBI endpoint: {e}. "
+            "The /oobi/{{cid}}/registrar route will return 404 until resolved."
+        )
 
 
 def setup(name="weirwood", alias="weirwood", base=None, bran=None,
@@ -90,7 +131,12 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     logger.info(f"Connected to MongoDB at {dbHost}@{dbName}")
 
     # ------------------------------------------------------------------ #
-    # 3. Services                                                          #
+    # 3. Register weirwood as registrar endpoint (for OOBI resolution)    #
+    # ------------------------------------------------------------------ #
+    _register_registrar_endpoint(hab, parser, host, port)
+
+    # ------------------------------------------------------------------ #
+    # 4. Services                                                          #
     # ------------------------------------------------------------------ #
     vmSvc = VMService()
     accountSvc = AccountService(kvy=kvy, parser=parser, vm_svc=vmSvc)
@@ -98,9 +144,11 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     teamSvc = TeamService(accountSvc=accountSvc, kelSvc=kelSvc)
     issuedSvc = IssuedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
     receivedSvc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
+    telSvc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=hab)
+    msgSvc = MessageService()
 
     # ------------------------------------------------------------------ #
-    # 4. Falcon app                                                        #
+    # 5. Falcon app                                                        #
     # ------------------------------------------------------------------ #
     app = falcon.App(middleware=falcon.CORSMiddleware(
         allow_origins="*",
@@ -112,7 +160,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         ],
     ))
 
-    # Routes
+    # Existing credential routes
     app.add_route("/issued-credentials",
                   IssuedCredentialCollectionEnd(issuedSvc))
     app.add_route("/issued-credentials/{said}",
@@ -122,6 +170,23 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     app.add_route("/received-credentials/{said}",
                   ReceivedCredentialResourceEnd(receivedSvc))
 
+    # Registrar routes (TEL events + OOBI)
+    app.add_route("/registrar/tel-events",
+                  RegistrarTelCollectionEnd(telSvc))
+    app.add_route("/registrar/tel-events/{regk}",
+                  RegistrarTelResourceEnd(telSvc))
+    app.add_route("/registrar/tel-events/{regk}/{vcid}",
+                  RegistrarTelResourceEnd(telSvc))
+    # Standard KERI registrar OOBI (kering.Roles.registrar is the standard role name)
+    app.add_route("/oobi/{cid}/registrar",
+                  RegistrarOobiEnd(hab))
+
+    # Intra-enterprise mailbox routes
+    app.add_route("/messages",
+                  MessageCollectionEnd(msgSvc))
+    app.add_route("/messages/{id}",
+                  MessageResourceEnd(msgSvc))
+
     # Authentication middleware (reuses healthKERI account infrastructure)
     auth = Authenticater(hab, accountSvc)
     app.add_middleware(SignatureValidationComponent(
@@ -130,7 +195,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     ))
 
     # ------------------------------------------------------------------ #
-    # 5. HTTP server doer                                                  #
+    # 6. HTTP server doer                                                  #
     # ------------------------------------------------------------------ #
     oobiery = oobiing.Oobiery(hby=hby)
 
