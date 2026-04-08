@@ -21,6 +21,7 @@ from keri.help import ogler
 from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
 
+from weirwood.app.api.identifier import IdentifierCollectionEnd, IdentifierResourceEnd
 from weirwood.app.api.issued_credential import (
     IssuedCredentialCollectionEnd, IssuedCredentialResourceEnd
 )
@@ -33,7 +34,7 @@ from weirwood.app.api.registrar import (
 from weirwood.app.api.message import MessageCollectionEnd, MessageResourceEnd
 from weirwood.core.services import (
     IssuedCredentialService, ReceivedCredentialService,
-    TelEventService, MessageService,
+    TelEventService, MessageService, IdentifierService,
 )
 
 logger = ogler.getLogger()
@@ -146,6 +147,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     receivedSvc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
     telSvc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=hab)
     msgSvc = MessageService()
+    identifierSvc = IdentifierService()
 
     # ------------------------------------------------------------------ #
     # 5. Falcon app                                                        #
@@ -180,6 +182,12 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     # Standard KERI registrar OOBI (kering.Roles.registrar is the standard role name)
     app.add_route("/oobi/{cid}/registrar",
                   RegistrarOobiEnd(hab))
+
+    # Uploaded identifier routes
+    app.add_route("/identifiers",
+                  IdentifierCollectionEnd(identifierSvc))
+    app.add_route("/identifiers/{aid}",
+                  IdentifierResourceEnd(identifierSvc))
 
     # Intra-enterprise mailbox routes
     app.add_route("/messages",
