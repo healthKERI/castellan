@@ -21,7 +21,7 @@ from keri.help import ogler
 from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
 
-from weirwood.app.api.identifier import IdentifierCollectionEnd, IdentifierResourceEnd
+from weirwood.app.api.identifier import IdentifierCollectionEnd, IdentifierKelEnd, IdentifierResourceEnd
 from weirwood.app.api.issued_credential import (
     IssuedCredentialCollectionEnd, IssuedCredentialResourceEnd
 )
@@ -147,7 +147,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     receivedSvc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
     telSvc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=hab)
     msgSvc = MessageService()
-    identifierSvc = IdentifierService()
+    identifierSvc = IdentifierService(kelSvc=kelSvc, parser=parser, kvy=kvy)
 
     # ------------------------------------------------------------------ #
     # 5. Falcon app                                                        #
@@ -188,6 +188,8 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
                   IdentifierCollectionEnd(identifierSvc))
     app.add_route("/identifiers/{aid}",
                   IdentifierResourceEnd(identifierSvc))
+    app.add_route("/identifiers/{aid}/kel",
+                  IdentifierKelEnd(identifierSvc))
 
     # Intra-enterprise mailbox routes
     app.add_route("/messages",

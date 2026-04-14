@@ -34,13 +34,19 @@ class UploadedIdentifier(Document):
 class IdentifierService:
     """Service for storing and retrieving weirwood-uploaded identifiers."""
 
-    def upload(self, aid: str, alias: str, oobi: str = "") -> "UploadedIdentifier":
+    def __init__(self, kelSvc=None, parser=None, kvy=None):
+        self.kelSvc = kelSvc
+        self.parser = parser
+        self.kvy = kvy
+
+    def upload(self, aid: str, alias: str, kel: bytes, oobi: str = "") -> "UploadedIdentifier":
         """
         Store an identifier uploaded by a whisper instance.
 
         Args:
             aid:   KERI AID prefix (primary key).
             alias: Human-readable alias — must be unique across weirwood.
+            kel:   Raw CESR-encoded KEL bytes for the identifier.
             oobi:  OOBI URL for peer resolution (optional).
 
         Returns:
@@ -48,18 +54,42 @@ class IdentifierService:
 
         Raises:
             ConflictError: If the alias is already in use.
+            ValueError: If the KEL cannot be parsed or verified.
         """
         if not aid:
             raise ValueError("aid is required")
         if not alias:
             raise ValueError("alias is required")
+        if not kel:
+            raise ValueError("kel is required")
 
         if UploadedIdentifier.objects(alias=alias).first() is not None:
             raise ConflictError(f"Alias '{alias}' is already uploaded to weirwood")
 
+        if self.parser is None or self.kvy is None:
+            raise RuntimeError("IdentifierService requires parser and kvy to process KEL")
+
+        try:
+            self.parser.parse(ims=bytearray(kel), kvy=self.kvy, local=False)
+        except Exception as e:
+            raise RuntimeError(f"An error occurred parsing KEL into Kevery: {e}")
+
+        self.kvy.processEscrows()
+
+        if aid not in self.kvy.kevers:
+            raise ValueError(f"KEL parsed but AID {aid} not found in kevers — KEL may be incomplete or unverifiable")
+
+        if self.kelSvc is not None:
+            try:
+                self.kelSvc.capture_kel(aid)
+                logger.info(f"KEL captured for aid={aid}")
+            except Exception as e:
+                raise RuntimeError(f"KEL capture failed for aid={aid}: {e}")
+
         identifier = UploadedIdentifier(aid=aid, alias=alias, oobi=oobi)
         identifier.save()
         logger.info(f"Uploaded identifier aid={aid} alias={alias}")
+
         return identifier
 
     def list_all(self) -> list["UploadedIdentifier"]:
@@ -72,6 +102,22 @@ class IdentifierService:
             return UploadedIdentifier.objects.get(aid=aid)
         except UploadedIdentifier.DoesNotExist:
             raise NotFoundError(f"Identifier not found: {aid}")
+
+    def get_kel_stream(self, aid: str) -> bytes:
+        """
+        Return the CESR-encoded KEL stream for the given AID.
+
+        Raises NotFoundError if no identifier exists for aid.
+        Returns empty bytes if the KEL has not been captured yet.
+        """
+        self.get(aid)  # raises NotFoundError if unknown
+        if self.kelSvc is None:
+            return b""
+        try:
+            return self.kelSvc.get_kel_stream(aid)
+        except Exception as e:
+            logger.warning(f"KEL stream retrieval failed for aid={aid}: {e}")
+            return b""
 
     def delete(self, aid: str) -> None:
         """Delete an uploaded identifier. Raises NotFoundError if missing."""

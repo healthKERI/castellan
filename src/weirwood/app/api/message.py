@@ -55,16 +55,22 @@ class MessageCollectionEnd:
         or the `recipient` query parameter.
         The topic is taken from the `topic` query parameter (default: multisig).
 
-        The sender AID is derived from req.context.aid (set by ESSR middleware).
+        The sender AID is the whisper-uploaded identifier, passed as the `sender` query param.
+        The recipient AID is the target group participant, passed as the `recipient` query param
+        (or via the CESR-Destination header). One POST per recipient is required.
 
         Response (201): serialized Message document.
         """
+        logger.info("POST /messages: request received")
+
         # Resolve recipient
-        recipient_aid = (
-            req.get_header(_CESR_DESTINATION_HEADER)
-            or req.get_param("recipient")
-        )
+        header_val = req.get_header(_CESR_DESTINATION_HEADER)
+        param_val = req.get_param("recipient")
+        recipient_aid = header_val or param_val
         if not recipient_aid:
+            logger.warning(
+                "POST /messages 400: no recipient AID provided via header or query param"
+            )
             raise falcon.HTTPBadRequest(
                 title="Bad Request",
                 description=(
@@ -75,27 +81,38 @@ class MessageCollectionEnd:
 
         topic = req.get_param("topic", default="multisig")
 
-        # Sender from ESSR context
-        sender_aid = getattr(req.context, "aid", None)
+        sender_aid = req.get_param("sender")
         if not sender_aid:
-            raise falcon.HTTPUnauthorized(
-                title="Unauthorized",
-                description="Could not determine sender AID from request context.",
+            logger.warning("POST /messages 400: missing required 'sender' query param")
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description="Required query param 'sender' (whisper-uploaded sender AID) is missing.",
             )
 
         try:
             raw = req.bounded_stream.read()
+            logger.debug(
+                f"POST /messages: read {len(raw) if raw else 0} bytes from request body"
+            )
         except Exception as e:
+            logger.error(f"POST /messages 400: failed to read request body — {e}", exc_info=True)
             raise falcon.HTTPBadRequest(
                 title="Read Error",
                 description=f"Could not read request body: {e}",
             )
 
         if not raw:
+            logger.warning("POST /messages 400: empty request body")
             raise falcon.HTTPBadRequest(
                 title="Bad Request",
                 description="Request body must contain CESR-encoded event bytes.",
             )
+
+        logger.info(
+            f"POST /messages: posting message — "
+            f"sender={sender_aid[:16]}..., recipient={recipient_aid[:16]}..., "
+            f"topic={topic}, body_length={len(raw)}"
+        )
 
         try:
             msg = self.service.post_message(
@@ -105,20 +122,30 @@ class MessageCollectionEnd:
                 raw=raw,
             )
         except Exception as e:
+            logger.error(
+                f"POST /messages 500: service.post_message raised {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
                 description=f"An unexpected error occurred: {e}",
             )
 
+        logger.info(
+            f"POST /messages 201: id={msg.id}, topic={topic}, "
+            f"sender={sender_aid[:16]}..., recipient={recipient_aid[:16]}..., "
+            f"body_length={len(raw)}"
+        )
         resp.status = falcon.HTTP_201
         resp.content_type = "application/json"
         resp.media = _serialize(msg)
 
     def on_get(self, req, resp):
         """
-        Poll messages for the authenticated AID.
+        Poll messages for the given AID.
 
         Query params:
+            aid         — recipient AID (required; the whisper-uploaded identifier prefix)
             topic       — filter to a specific topic (e.g. "multisig")
             unread      — if "true", return only unread messages
             page        — zero-indexed page (default 0)
@@ -131,14 +158,13 @@ class MessageCollectionEnd:
               "num_pages": NP,
               "messages": [...]
             }
-
-        The authenticated AID is read from req.context.aid (ESSR middleware).
         """
-        recipient_aid = getattr(req.context, "aid", None)
+        recipient_aid = req.get_param("aid")
         if not recipient_aid:
-            raise falcon.HTTPUnauthorized(
-                title="Unauthorized",
-                description="Could not determine recipient AID from request context.",
+            logger.warning("GET /messages: missing required 'aid' query param — returning 400")
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description="Required query param 'aid' (recipient AID) is missing.",
             )
 
         topic = req.get_param("topic", default=None)
@@ -155,11 +181,13 @@ class MessageCollectionEnd:
                 page_size=page_size,
             )
         except Exception as e:
+            logger.error(f"GET /messages 500: {e}")
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
                 description=f"An unexpected error occurred: {e}",
             )
 
+        logger.info(f"GET /messages 200: aid={recipient_aid[:16]}... count={total}")
         resp.status = falcon.HTTP_200
         resp.content_type = "application/json"
         resp.media = {
@@ -188,6 +216,7 @@ class MessageResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
+        logger.info(f"PUT /messages/{id} 200: marked read")
         resp.status = falcon.HTTP_200
         resp.content_type = "application/json"
         resp.media = _serialize(msg)
@@ -204,4 +233,5 @@ class MessageResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
+        logger.info(f"DELETE /messages/{id} 204")
         resp.status = falcon.HTTP_204
