@@ -13,6 +13,8 @@ The /oobi endpoint serves weirwood's registrar endpoint information as a
 CESR-encoded KERI reply stream so clients can resolve weirwood via keripy's
 standard OOBI resolution mechanism.
 """
+import base64
+
 import falcon
 from keri import kering
 from keri.help import ogler
@@ -134,6 +136,36 @@ class RegistrarTelResourceEnd:
             "vcid": vcid,
             "count": len(events),
             "events": [_serialize_event(e) for e in events],
+        }
+
+
+class RegistrarBackerEnd:
+    """
+    GET /registrar/backer
+
+    Returns the AID and base64-encoded KEL of weirwood's non-transferable
+    backer identifier.  Whisper instances call this during setup to learn
+    which AID to include in registry ``baks`` lists and to resolve the
+    backer's key state locally.
+
+    Response (200):
+        {
+          "aid":     "<non-transferable backer prefix>",
+          "kel_b64": "<base64-encoded CESR KEL bytes>"
+        }
+    """
+
+    def __init__(self, hby, hab):
+        self.hby = hby
+        self.hab = hab  # non-transferable backer hab
+
+    def on_get(self, req, resp):
+        kel_bytes = b"".join(self.hby.db.clonePreIter(pre=self.hab.pre, fn=0))
+        resp.status = falcon.HTTP_200
+        resp.content_type = "application/json"
+        resp.media = {
+            "aid": self.hab.pre,
+            "kel_b64": base64.b64encode(kel_bytes).decode(),
         }
 
 

@@ -74,8 +74,6 @@ class IdentifierService:
         except Exception as e:
             raise RuntimeError(f"An error occurred parsing KEL into Kevery: {e}")
 
-        self.kvy.processEscrows()
-
         if aid not in self.kvy.kevers:
             raise ValueError(f"KEL parsed but AID {aid} not found in kevers — KEL may be incomplete or unverifiable")
 

@@ -4,9 +4,11 @@ weirwood.app.resting module
 
 Falcon application factory and service wiring for the weirwood credential server.
 """
+import base64
 import os
 
 import falcon
+from hio.base import doing
 from hio.core import http
 from hio.help import decking
 from hksvc.core import (AccountService, TeamService, Authenticater,
@@ -29,7 +31,8 @@ from weirwood.app.api.received_credential import (
     ReceivedCredentialCollectionEnd, ReceivedCredentialResourceEnd
 )
 from weirwood.app.api.registrar import (
-    RegistrarTelCollectionEnd, RegistrarTelResourceEnd, RegistrarOobiEnd
+    RegistrarTelCollectionEnd, RegistrarTelResourceEnd, RegistrarOobiEnd,
+    RegistrarBackerEnd,
 )
 from weirwood.app.api.message import MessageCollectionEnd, MessageResourceEnd
 from weirwood.core.services import (
@@ -116,6 +119,14 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     if hab is None:
         raise kering.ConfigurationError(f"Hab '{alias}' not found in keystore '{name}'")
 
+    # Non-transferable identifier used as TEL registry backer.
+    # Must be non-transferable so its signing key (= its prefix) is permanently stable.
+    backer_alias = f"{alias}-backer"
+    backer_hab = hby.habByName(backer_alias)
+    if backer_hab is None:
+        backer_hab = hby.makeHab(name=backer_alias, transferable=False)
+        logger.info(f"Created non-transferable backer identifier: {backer_hab.pre}")
+
     # ------------------------------------------------------------------ #
     # 2. Configuration & database                                          #
     # ------------------------------------------------------------------ #
@@ -145,7 +156,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     teamSvc = TeamService(accountSvc=accountSvc, kelSvc=kelSvc)
     issuedSvc = IssuedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
     receivedSvc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
-    telSvc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=hab)
+    telSvc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=backer_hab)
     msgSvc = MessageService()
     identifierSvc = IdentifierService(kelSvc=kelSvc, parser=parser, kvy=kvy)
 
@@ -182,6 +193,9 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     # Standard KERI registrar OOBI (kering.Roles.registrar is the standard role name)
     app.add_route("/oobi/{cid}/registrar",
                   RegistrarOobiEnd(hab))
+    # Non-transferable backer identifier AID + KEL for whisper instances to fetch
+    app.add_route("/registrar/backer",
+                  RegistrarBackerEnd(hby=hby, hab=backer_hab))
 
     # Uploaded identifier routes
     app.add_route("/identifiers",
@@ -215,7 +229,20 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     )
     serverDoer = http.ServerDoer(server=server)
 
-    doers = [*oobiery.doers, serverDoer]
+    # Continuous escrow processing — runs every 0.5 s so out-of-order or
+    # dependency-pending events are resolved without waiting for a new request.
+    def _make_escrow_doer(process_fn, tock=0.5):
+        def escrow_do(tymth, tock=tock, **kwa):
+            yield tock
+            while True:
+                process_fn()
+                yield tock
+        return doing.doify(escrow_do)
+
+    kvy_escrow_doer = _make_escrow_doer(kvy.processEscrows)
+    tvy_escrow_doer = _make_escrow_doer(tvy.processEscrows)
+
+    doers = [*oobiery.doers, serverDoer, kvy_escrow_doer, tvy_escrow_doer]
 
     logger.info(f"Weirwood credential server listening on {host}:{port}")
     return doers

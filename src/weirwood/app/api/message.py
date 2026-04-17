@@ -64,9 +64,8 @@ class MessageCollectionEnd:
         logger.info("POST /messages: request received")
 
         # Resolve recipient
-        header_val = req.get_header(_CESR_DESTINATION_HEADER)
-        param_val = req.get_param("recipient")
-        recipient_aid = header_val or param_val
+        recipient_aid = req.get_param("recipient")
+
         if not recipient_aid:
             logger.warning(
                 "POST /messages 400: no recipient AID provided via header or query param"

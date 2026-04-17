@@ -132,7 +132,6 @@ class TelEventService:
         try:
             ims = bytearray(raw)
             self.parser.parse(ims=ims, tvy=self.tvy, local=True)
-            self.tvy.processEscrows()
         except Exception as e:
             logger.warning(f"TEL event {said} could not be fully validated: {e}. "
                            "Storing as pending.")

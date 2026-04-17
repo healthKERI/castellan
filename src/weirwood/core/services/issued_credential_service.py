@@ -171,8 +171,6 @@ class IssuedCredentialService:
         except Exception as e:
             raise RuntimeError(f"Error parsing ACDC stream: {e}")
 
-        self.tvy.processEscrows()
-
         creder = self.reger.creds.get(keys=(said,))
         if creder is None:
             raise RuntimeError(f"Credential {said} not found in reger after parsing")
