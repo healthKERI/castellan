@@ -36,6 +36,7 @@ class Message(Document):
     raw = BinaryField(required=True)             # raw CESR-encoded event bytes
     read = BooleanField(default=False)
     created_at = DateTimeField(default=datetime.now)
+    multisig_alias = StringField(default="")
 
     meta = {
         "indexes": [
@@ -55,7 +56,7 @@ class MessageService:
     # ------------------------------------------------------------------
 
     def post_message(self, recipient_aid: str, sender_aid: str,
-                     topic: str, raw: bytes) -> "Message":
+                     topic: str, raw: bytes, multisig_alias: str = "") -> "Message":
         """
         Store a CESR-encoded message for a recipient AID.
 
@@ -74,6 +75,7 @@ class MessageService:
             sender_aid=sender_aid,
             topic=topic,
             raw=raw,
+            multisig_alias=multisig_alias,
             read=False,
         )
         msg.save()

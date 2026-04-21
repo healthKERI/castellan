@@ -34,9 +34,10 @@ def _serialize(msg) -> dict:
         "recipient_aid": msg.recipient_aid,
         "sender_aid": msg.sender_aid,
         "topic": msg.topic,
-        "raw": msg.raw.decode("latin-1") if isinstance(msg.raw, (bytes, bytearray)) else msg.raw,
+        "raw": msg.raw.decode("utf-8") if isinstance(msg.raw, (bytes, bytearray)) else msg.raw,
         "read": msg.read,
         "created_at": msg.created_at.isoformat() if msg.created_at else None,
+        "multisig_alias": msg.multisig_alias if hasattr(msg, "multisig_alias") else ""
     }
 
 
@@ -88,6 +89,8 @@ class MessageCollectionEnd:
                 description="Required query param 'sender' (whisper-uploaded sender AID) is missing.",
             )
 
+        multisig_alias = req.get_param("multisig_alias", default="")
+
         try:
             raw = req.bounded_stream.read()
             logger.debug(
@@ -119,6 +122,7 @@ class MessageCollectionEnd:
                 sender_aid=sender_aid,
                 topic=topic,
                 raw=raw,
+                multisig_alias=multisig_alias
             )
         except Exception as e:
             logger.error(
