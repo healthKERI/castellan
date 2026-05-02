@@ -18,6 +18,8 @@ from hksvc.core.basing import databaseInit
 from hksvc.core.haberying import Hby
 from keri import kering
 from keri.app import configing, indirecting, oobiing
+from keri.app import habbing
+from keri.peer import exchanging
 from keri.core import eventing, parsing, routing
 from keri.help import ogler
 from keri.vdr import credentialing, verifying
@@ -32,43 +34,48 @@ from weirwood.app.api.received_credential import (
 )
 from weirwood.app.api.registrar import (
     RegistrarTelCollectionEnd, RegistrarTelResourceEnd, RegistrarOobiEnd,
-    RegistrarBackerEnd,
+    RegistrarBackerEnd, MailboxOobiEnd,
 )
 from weirwood.app.api.message import MessageCollectionEnd, MessageResourceEnd
 from weirwood.core.services import (
     IssuedCredentialService, ReceivedCredentialService,
     TelEventService, MessageService, IdentifierService,
 )
+from weirwood.app.api.cesr_inbound import (
+    CesrInboundEnd, WeirwoodForwardHandler, WeirwoodIpexGrantHandler, QviAdmitDoer,
+)
 
 logger = ogler.getLogger()
+WEIRWOOD_CESR_PORT = 5925
 
-
-def _register_registrar_endpoint(hab, parser, host, port):
+def _register_registrar_endpoint(hab, backer_hab, parser, host, port):
     """
-    Register weirwood's HTTP location and registrar end-role in its KERI database
-    so that hab.replyToOobi(role='registrar') can serve a valid OOBI reply.
+    Register weirwood's registrar end-role and location in LMDB so that
+    hab.replyToOobi(role='registrar') serves a valid OOBI reply pointing to
+    the REST API port (where /registrar/tel-events lives).
 
-    Writes signed /loc/scheme and /end/role/add reply events into the hab's
-    LMDB via the supplied parser/rvy.  Idempotent — safe to call on every
-    startup; existing entries are overwritten with fresh timestamps.
+    Uses backer_hab as the eid for the registrar end-role so that the registrar
+    loc scheme (REST port) is stored under backer_hab.pre and never conflicts
+    with the mailbox loc scheme (CESR port) stored under hab.pre.
+
+    Idempotent — safe to call on every startup.
     """
     try:
         scheme = kering.Schemes.http
         url = f"http://{host}:{port}"
 
-        # Build signed reply events (bytearray streams)
-        loc_msgs = hab.makeLocScheme(url=url, scheme=scheme)
-        role_msgs = hab.makeEndRole(eid=hab.pre, role=kering.Roles.registrar)
+        # backer_hab announces its HTTP location at the REST API port
+        loc_msgs = backer_hab.makeLocScheme(url=url, scheme=scheme)
+        # hab (controller) delegates the registrar role to backer_hab (eid)
+        role_msgs = hab.makeEndRole(eid=backer_hab.pre, role=kering.Roles.registrar)
 
-        # Process each event stream in-place to persist to LMDB
         for msgs in (loc_msgs, role_msgs):
             if msgs:
-                ims = bytearray(msgs)
-                parser.parse(ims=ims)
+                parser.parse(ims=bytearray(msgs))
 
         logger.info(
             f"Registered weirwood registrar endpoint: {url} "
-            f"(eid={hab.pre}, role={kering.Roles.registrar})"
+            f"(cid={hab.pre}, eid={backer_hab.pre}, role={kering.Roles.registrar})"
         )
     except Exception as e:
         logger.warning(
@@ -100,7 +107,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         List of hio Doers.
     """
     # ------------------------------------------------------------------ #
-    # 1. KERI components                                                   #
+    # 1. KERI components                                                 #
     # ------------------------------------------------------------------ #
     hby = Hby.hby(name=name, base=base, bran=bran)
 
@@ -128,7 +135,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         logger.info(f"Created non-transferable backer identifier: {backer_hab.pre}")
 
     # ------------------------------------------------------------------ #
-    # 2. Configuration & database                                          #
+    # 2. Configuration & database                                        #
     # ------------------------------------------------------------------ #
     cf = configing.Configer(name=name, headDirPath=headDirPath)
     conf = cf.get()
@@ -143,12 +150,13 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     logger.info(f"Connected to MongoDB at {dbHost}@{dbName}")
 
     # ------------------------------------------------------------------ #
-    # 3. Register weirwood as registrar endpoint (for OOBI resolution)    #
+    # 3. Register weirwood as registrar endpoint (for OOBI resolution)   #
     # ------------------------------------------------------------------ #
-    _register_registrar_endpoint(hab, parser, host, port)
+    _register_registrar_endpoint(hab, backer_hab, parser, host, port)
+
 
     # ------------------------------------------------------------------ #
-    # 4. Services                                                          #
+    # 4. Services                                                        #
     # ------------------------------------------------------------------ #
     vmSvc = VMService()
     accountSvc = AccountService(kvy=kvy, parser=parser, vm_svc=vmSvc)
@@ -158,10 +166,11 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     receivedSvc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
     telSvc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=backer_hab)
     msgSvc = MessageService()
-    identifierSvc = IdentifierService(kelSvc=kelSvc, parser=parser, kvy=kvy)
+    identifierSvc = IdentifierService(kelSvc=kelSvc, parser=parser, kvy=kvy, hby=hby, weirwood_hab=hab)
+    admit_cues = decking.Deck()
 
     # ------------------------------------------------------------------ #
-    # 5. Falcon app                                                        #
+    # 5. Falcon app                                                      #
     # ------------------------------------------------------------------ #
     app = falcon.App(middleware=falcon.CORSMiddleware(
         allow_origins="*",
@@ -218,8 +227,55 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         hab=hab, parser=parser, auth=auth,
     ))
 
+    # CESR ingestion — build Exchanger before constructing the endpoint
+    fwd_handler = WeirwoodForwardHandler(hby=hby, message_service=msgSvc)
+    ipex_handler = WeirwoodIpexGrantHandler(
+        hby=hby,
+        hab=hab,
+        rgy=rgy,
+        verifier=verifier,
+        tvy=tvy,
+        received_svc=receivedSvc,
+        admit_cues=admit_cues,
+    )
+    exc = exchanging.Exchanger(hby=hby, handlers=[fwd_handler, ipex_handler])
+
+    # Break circular dependency: fwd_handler needs parser+exc to re-dispatch
+    # inner IPEX embeds, but exc needs fwd_handler at construction time.
+    fwd_handler.parser = parser
+    fwd_handler.exc = exc
+
+    admit_doer = QviAdmitDoer(hby=hby, hab=hab, admit_cues=admit_cues, exc=exc)
+
+    cesr_end = CesrInboundEnd(exc=exc, kvy=kvy, rvy=rvy, tvy=tvy)
+    cesr_app = falcon.App()
+
+    cesr_app.add_route("/cesr", cesr_end)
+    cesr_app.add_route("/cesr/oobi/{cid}/mailbox/{eid}", MailboxOobiEnd(hab))
+    cesr_server = indirecting.createHttpServer(
+        host="127.0.0.1",   # 0.0.0.0 in production
+        port=WEIRWOOD_CESR_PORT,
+        app=cesr_app,
+    )
+    cesr_server_doer = http.ServerDoer(server=cesr_server)
+
+    # Register root URL so kli oobi generate emits /oobi/{cid}/mailbox/{eid} paths
+    # that oobiing.py's OOBI_RE can match, and StreamPoster's PUT-to-"/" lands at "/"
+    cesr_url = f"http://127.0.0.1:{WEIRWOOD_CESR_PORT}/cesr"
+    loc_msgs = hab.makeLocScheme(url=cesr_url, scheme=kering.Schemes.http)
+    parser.parse(ims=bytearray(loc_msgs))
+
+    mailbox_role_msgs = hab.makeEndRole(eid=hab.pre, role=kering.Roles.mailbox)
+    parser.parse(ims=bytearray(mailbox_role_msgs))
+
+    # Dev startup: register weirwood as mailbox for all group HABs already in keystore
+    for pre, group_hab in hby.habs.items():
+        if isinstance(group_hab, habbing.GroupHab):
+            role_msgs = group_hab.makeEndRole(eid=hab.pre, role=kering.Roles.mailbox)
+            parser.parse(ims=bytearray(role_msgs))
+
     # ------------------------------------------------------------------ #
-    # 6. HTTP server doer                                                  #
+    # 6. HTTP server doer                                                #
     # ------------------------------------------------------------------ #
     oobiery = oobiing.Oobiery(hby=hby)
 
@@ -227,7 +283,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         host=host, port=port, app=app,
         keypath=keypath, certpath=certpath, cafilepath=cafilepath,
     )
-    serverDoer = http.ServerDoer(server=server)
+    server_doer = http.ServerDoer(server=server)
 
     # Continuous escrow processing — runs every 0.5 s so out-of-order or
     # dependency-pending events are resolved without waiting for a new request.
@@ -242,7 +298,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     kvy_escrow_doer = _make_escrow_doer(kvy.processEscrows)
     tvy_escrow_doer = _make_escrow_doer(tvy.processEscrows)
 
-    doers = [*oobiery.doers, serverDoer, kvy_escrow_doer, tvy_escrow_doer]
+    doers = [*oobiery.doers, server_doer, cesr_server_doer, kvy_escrow_doer, tvy_escrow_doer, admit_doer]
 
     logger.info(f"Weirwood credential server listening on {host}:{port}")
     return doers

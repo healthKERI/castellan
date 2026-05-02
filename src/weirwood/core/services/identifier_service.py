@@ -11,6 +11,7 @@ exchange OOBIs before constructing a group multisig.
 from datetime import datetime
 
 from keri.help import ogler
+from keri.app import habbing
 from mongoengine import DateTimeField, Document, StringField
 
 from weirwood.core.services.custom.custom_errors import ConflictError, NotFoundError
@@ -34,10 +35,12 @@ class UploadedIdentifier(Document):
 class IdentifierService:
     """Service for storing and retrieving weirwood-uploaded identifiers."""
 
-    def __init__(self, kelSvc=None, parser=None, kvy=None):
+    def __init__(self, kelSvc=None, parser=None, kvy=None, hby=None, weirwood_hab=None):
         self.kelSvc = kelSvc
         self.parser = parser
         self.kvy = kvy
+        self.hby = hby
+        self.weirwood_hab = weirwood_hab
 
     def upload(self, aid: str, alias: str, kel: bytes, oobi: str = "") -> "UploadedIdentifier":
         """
@@ -81,6 +84,14 @@ class IdentifierService:
             try:
                 self.kelSvc.capture_kel(aid)
                 logger.info(f"KEL captured for aid={aid}")
+                if self.hby is not None and self.weirwood_hab is not None:
+                    group_hab = self.hby.habs.get(aid)
+                    if group_hab is not None and isinstance(group_hab, habbing.GroupHab):
+                        role_msgs = group_hab.makeEndRole(
+                            eid=self.weirwood_hab.pre, role=kering.Roles.mailbox
+                        )
+                        self.parser.parse(ims=bytearray(role_msgs))
+                        logger.info(f"Registered weirwood as mailbox for group AID={aid}")
             except Exception as e:
                 raise RuntimeError(f"KEL capture failed for aid={aid}: {e}")
 

@@ -190,9 +190,7 @@ class RegistrarOobiEnd:
 
     def on_get(self, req, resp, cid):
         try:
-            msgs = bytearray()
-            for msg in self.hab.replyToOobi(aid=cid, role=kering.Roles.registrar):
-                msgs.extend(msg)
+            msgs = self.hab.replyToOobi(aid=cid, role=kering.Roles.registrar)
         except Exception as e:
             logger.error(f"Error building registrar OOBI for {cid}: {e}")
             raise falcon.HTTPInternalServerError(
@@ -203,8 +201,39 @@ class RegistrarOobiEnd:
         if not msgs:
             raise falcon.HTTPNotFound(
                 title="Not Found",
-                description=f"No registrar OOBI registered for {cid}. "
-                            "Ensure weirwood started with registrar endpoint registration.",
+                description=f"No registrar OOBI registered for {cid}.",
+            )
+
+        resp.status = falcon.HTTP_200
+        resp.content_type = "application/json+cesr"
+        resp.data = bytes(msgs)
+
+class MailboxOobiEnd:
+    """
+    GET /oobi/{cid}/mailbox/{eid}
+
+    Serves weirwood's mailbox OOBI as a CESR-encoded KERI reply stream so
+    that callers (e.g. mock-gleif) can resolve weirwood's mailbox endpoint
+    without going through witnesses.
+    """
+
+    def __init__(self, hab):
+        self.hab = hab
+
+    def on_get(self, req, resp, cid, eid=None):
+        try:
+            msgs = self.hab.replyToOobi(aid=cid, role=kering.Roles.mailbox)
+        except Exception as e:
+            logger.error(f"Error building mailbox OOBI for {cid}: {e}")
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"Could not build mailbox OOBI: {e}",
+            )
+
+        if not msgs:
+            raise falcon.HTTPNotFound(
+                title="Not Found",
+                description=f"No mailbox OOBI registered for {cid}.",
             )
 
         resp.status = falcon.HTTP_200
