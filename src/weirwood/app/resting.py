@@ -48,34 +48,32 @@ from weirwood.app.api.cesr_inbound import (
 logger = ogler.getLogger()
 WEIRWOOD_CESR_PORT = 5925
 
-def _register_registrar_endpoint(hab, backer_hab, parser, host, port):
+def _register_registrar_endpoint(hab, parser, host, port):
     """
-    Register weirwood's registrar end-role and location in LMDB so that
-    hab.replyToOobi(role='registrar') serves a valid OOBI reply pointing to
-    the REST API port (where /registrar/tel-events lives).
+    Register weirwood's HTTP location and registrar end-role in its KERI database
+    so that hab.replyToOobi(role='registrar') can serve a valid OOBI reply.
 
-    Uses backer_hab as the eid for the registrar end-role so that the registrar
-    loc scheme (REST port) is stored under backer_hab.pre and never conflicts
-    with the mailbox loc scheme (CESR port) stored under hab.pre.
-
-    Idempotent — safe to call on every startup.
+    Writes signed /loc/scheme and /end/role/add reply events into the hab's
+    LMDB via the supplied parser/rvy.  Idempotent — safe to call on every
+    startup; existing entries are overwritten with fresh timestamps.
     """
     try:
         scheme = kering.Schemes.http
         url = f"http://{host}:{port}"
 
-        # backer_hab announces its HTTP location at the REST API port
-        loc_msgs = backer_hab.makeLocScheme(url=url, scheme=scheme)
-        # hab (controller) delegates the registrar role to backer_hab (eid)
-        role_msgs = hab.makeEndRole(eid=backer_hab.pre, role=kering.Roles.registrar)
+        # Build signed reply events (bytearray streams)
+        loc_msgs = hab.makeLocScheme(url=url, scheme=scheme)
+        role_msgs = hab.makeEndRole(eid=hab.pre, role=kering.Roles.registrar)
 
+        # Process each event stream in-place to persist to LMDB
         for msgs in (loc_msgs, role_msgs):
             if msgs:
-                parser.parse(ims=bytearray(msgs))
+                ims = bytearray(msgs)
+                parser.parse(ims=ims)
 
         logger.info(
             f"Registered weirwood registrar endpoint: {url} "
-            f"(cid={hab.pre}, eid={backer_hab.pre}, role={kering.Roles.registrar})"
+            f"(eid={hab.pre}, role={kering.Roles.registrar})"
         )
     except Exception as e:
         logger.warning(
@@ -152,7 +150,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     # ------------------------------------------------------------------ #
     # 3. Register weirwood as registrar endpoint (for OOBI resolution)   #
     # ------------------------------------------------------------------ #
-    _register_registrar_endpoint(hab, backer_hab, parser, host, port)
+    _register_registrar_endpoint(hab, parser, host, port)
 
 
     # ------------------------------------------------------------------ #
@@ -234,7 +232,6 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         hab=hab,
         rgy=rgy,
         verifier=verifier,
-        tvy=tvy,
         received_svc=receivedSvc,
         admit_cues=admit_cues,
     )
@@ -247,7 +244,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
 
     admit_doer = QviAdmitDoer(hby=hby, hab=hab, admit_cues=admit_cues, exc=exc)
 
-    cesr_end = CesrInboundEnd(exc=exc, kvy=kvy, rvy=rvy, tvy=tvy)
+    cesr_end = CesrInboundEnd(exc=exc, kvy=kvy, rvy=rvy)
     cesr_app = falcon.App()
 
     cesr_app.add_route("/cesr", cesr_end)
@@ -259,8 +256,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     )
     cesr_server_doer = http.ServerDoer(server=cesr_server)
 
-    # Register root URL so kli oobi generate emits /oobi/{cid}/mailbox/{eid} paths
-    # that oobiing.py's OOBI_RE can match, and StreamPoster's PUT-to-"/" lands at "/"
+    # Register weirwood's CESR endpoint as its mailbox location
     cesr_url = f"http://127.0.0.1:{WEIRWOOD_CESR_PORT}/cesr"
     loc_msgs = hab.makeLocScheme(url=cesr_url, scheme=kering.Schemes.http)
     parser.parse(ims=bytearray(loc_msgs))

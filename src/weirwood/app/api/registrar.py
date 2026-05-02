@@ -210,7 +210,7 @@ class RegistrarOobiEnd:
 
 class MailboxOobiEnd:
     """
-    GET /oobi/{cid}/mailbox/{eid}
+    GET /cesr/oobi/{cid}/mailbox/{eid}
 
     Serves weirwood's mailbox OOBI as a CESR-encoded KERI reply stream so
     that callers (e.g. mock-gleif) can resolve weirwood's mailbox endpoint
