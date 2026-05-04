@@ -248,7 +248,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     cesr_end = CesrInboundEnd(exc=exc, kvy=kvy, rvy=rvy, tvy=tvy)
     cesr_app = falcon.App()
 
-    cesr_app.add_route("/cesr", cesr_end)
+    cesr_app.add_route("/", cesr_end)
     cesr_app.add_route("/oobi/{cid}/mailbox/{eid}", MailboxOobiEnd(hab))
     cesr_server = indirecting.createHttpServer(
         host="127.0.0.1",   # 0.0.0.0 in production
@@ -258,7 +258,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     cesr_server_doer = http.ServerDoer(server=cesr_server)
 
     # Register weirwood's CESR endpoint as its mailbox location
-    cesr_url = f"http://127.0.0.1:{WEIRWOOD_CESR_PORT}/cesr"
+    cesr_url = f"http://127.0.0.1:{WEIRWOOD_CESR_PORT}"
     loc_msgs = hab.makeLocScheme(url=cesr_url, scheme=kering.Schemes.http)
     parser.parse(ims=bytearray(loc_msgs))
 

@@ -126,7 +126,7 @@ class WeirwoodForwardHandler:
 
             # Append only the path-indexed attachment bytes for this embed label
             if attachments:
-                label_pather = coring.Pather(path=["e", label])
+                label_pather = coring.Pather(path=[label])
                 for np, pattach in attachments:
                     if np.startswith(label_pather):
                         inner_raw.extend(pattach)
@@ -233,8 +233,6 @@ class CesrInboundEnd:
 
     def _parse(self, req, rep):
         body = req.bounded_stream.read()
-        logger.info(f">>> CesrInboundEnd received POST, body length={len(body)}")
-        logger.info(f">>> Body preview: {body[:200]}")
         parsing.Parser().parse(
             ims=bytearray(body),
             kvy=self.kvy,
@@ -243,11 +241,7 @@ class CesrInboundEnd:
             exc=self.exc,
             local=False,
         )
-        logger.info(">>> CesrInboundEnd parse completed")
         rep.status = falcon.HTTP_204
-
-    def on_post(self, req, rep):
-        self._parse(req, rep)
 
     def on_put(self, req, rep):
         # StreamPoster (HTTPStreamMessenger) sends PUT to path "/" — same parsing logic
