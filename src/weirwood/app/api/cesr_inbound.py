@@ -23,11 +23,12 @@ class WeirwoodIpexGrantHandler:
     """
     resource = "/ipex/grant"
 
-    def __init__(self, hby, hab, rgy, verifier, received_svc, admit_cues):
+    def __init__(self, hby, hab, rgy, verifier, tvy, received_svc, admit_cues):
         self.hby = hby
         self.hab = hab
         self.rgy = rgy
         self.verifier = verifier
+        self.tvy = tvy
         self.received_svc = received_svc
         self.admit_cues = admit_cues  # decking.Deck() shared with QviAdmitDoer
 
@@ -52,7 +53,7 @@ class WeirwoodIpexGrantHandler:
             logger.error(f"Could not clone grant serder said={serder.said}")
             return
 
-        psr = parsing.Parser(kvy=None, tvy=None, vry=self.verifier)
+        psr = parsing.Parser(kvy=None, tvy=self.tvy, vry=self.verifier)
         for label in ("anc", "iss", "acdc"):
             ked = embeds.get(label)
             if ked is None:
@@ -123,14 +124,14 @@ class WeirwoodForwardHandler:
                 logger.warning(f"Could not reconstruct embed '{label}' in /fwd: {e}")
                 continue
 
-                # Append any path-indexed attachment bytes for this embed label
+            # Append only the path-indexed attachment bytes for this embed label
             if attachments:
                 label_pather = coring.Pather(path=["e", label])
                 for np, pattach in attachments:
-                    if np.startswith(coring.Pather(path=[])):
+                    if np.startswith(label_pather):
                         inner_raw.extend(pattach)
 
-                        # Dispatch IPEX embeds to the parser so /ipex/grant handler fires.
+            # Dispatch IPEX embeds to the parser so /ipex/grant handler fires.
             inner_route = embed.get("r", "")
             if inner_route.startswith("/ipex") and self.parser is not None and self.exc is not None:
                 try:
@@ -224,18 +225,30 @@ class QviAdmitDoer(doing.DoDoer):
 
 
 class CesrInboundEnd:
-    def __init__(self, exc, kvy, rvy):
+    def __init__(self, exc, kvy, rvy, tvy):
         self.exc = exc
         self.kvy = kvy
         self.rvy = rvy
+        self.tvy = tvy
 
-    def on_post(self, req, rep):
+    def _parse(self, req, rep):
         body = req.bounded_stream.read()
+        logger.info(f">>> CesrInboundEnd received POST, body length={len(body)}")
+        logger.info(f">>> Body preview: {body[:200]}")
         parsing.Parser().parse(
             ims=bytearray(body),
             kvy=self.kvy,
             rvy=self.rvy,
+            tvy=self.tvy,
             exc=self.exc,
             local=False,
         )
+        logger.info(">>> CesrInboundEnd parse completed")
         rep.status = falcon.HTTP_204
+
+    def on_post(self, req, rep):
+        self._parse(req, rep)
+
+    def on_put(self, req, rep):
+        # StreamPoster (HTTPStreamMessenger) sends PUT to path "/" — same parsing logic
+        self._parse(req, rep)

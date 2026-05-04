@@ -232,6 +232,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         hab=hab,
         rgy=rgy,
         verifier=verifier,
+        tvy=tvy,
         received_svc=receivedSvc,
         admit_cues=admit_cues,
     )
@@ -244,11 +245,11 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
 
     admit_doer = QviAdmitDoer(hby=hby, hab=hab, admit_cues=admit_cues, exc=exc)
 
-    cesr_end = CesrInboundEnd(exc=exc, kvy=kvy, rvy=rvy)
+    cesr_end = CesrInboundEnd(exc=exc, kvy=kvy, rvy=rvy, tvy=tvy)
     cesr_app = falcon.App()
 
     cesr_app.add_route("/cesr", cesr_end)
-    cesr_app.add_route("/cesr/oobi/{cid}/mailbox/{eid}", MailboxOobiEnd(hab))
+    cesr_app.add_route("/oobi/{cid}/mailbox/{eid}", MailboxOobiEnd(hab))
     cesr_server = indirecting.createHttpServer(
         host="127.0.0.1",   # 0.0.0.0 in production
         port=WEIRWOOD_CESR_PORT,
