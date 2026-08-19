@@ -1,13 +1,13 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.app.cli.weirwood module
+castellan.app.cli.castellan module
 
-Entry point for the weirwood CLI.
+Entry point for the castellan CLI.
 """
 import multicommand
 from keri import help
 
-from weirwood.app.cli import commands
+from castellan.app.cli import commands
 
 logger = help.ogler.getLogger()
 
@@ -24,7 +24,7 @@ def main():
         args.handler(args)
     except Exception as ex:
         import os
-        if os.getenv("DEBUG_WEIRWOOD"):
+        if os.getenv("DEBUG_CASTELLAN"):
             import traceback
             traceback.print_exc()
         else:

@@ -1,11 +1,11 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.core.services.message_service module
+castellan.core.services.message_service module
 
 Service and MongoDB document model for intra-enterprise CESR messages.
 
-Weirwood acts as a simple relay/mailbox for CESR-encoded events between
-weirwood instances and whisper clients (e.g., /multisig/vcp EXN coordination).
+Castellan acts as a simple relay/mailbox for CESR-encoded events between
+castellan instances and whisper clients (e.g., /multisig/vcp EXN coordination).
 Messages are stored per-recipient and polled via HTTP GET (no SSE for MVP).
 """
 import math
@@ -17,7 +17,7 @@ from mongoengine import (
     BinaryField, BooleanField, DateTimeField, Document, StringField
 )
 
-from weirwood.core.services.custom.custom_errors import NotFoundError
+from castellan.core.services.custom.custom_errors import NotFoundError
 
 logger = ogler.getLogger()
 
@@ -28,7 +28,7 @@ TOPIC_REVOCATION = "revocation"
 
 
 class Message(Document):
-    """A CESR-encoded message relayed through the weirwood mailbox."""
+    """A CESR-encoded message relayed through the castellan mailbox."""
     id = StringField(required=True, primary_key=True)
     recipient_aid = StringField(required=True)   # target AID
     sender_aid = StringField(required=True)      # authenticated sender (from ESSR)

@@ -1,9 +1,9 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.core.services.tel_event_service module
+castellan.core.services.tel_event_service module
 
 Service and MongoDB document model for TEL (Transaction Event Log) events.
-Weirwood acts as an active registrar backer: it parses, signs, and stores
+Castellan acts as an active registrar backer: it parses, signs, and stores
 each TEL event it receives, returning its signature as a backer receipt.
 """
 from datetime import datetime
@@ -14,7 +14,7 @@ from mongoengine import (
     BinaryField, DateTimeField, Document, IntField, StringField
 )
 
-from weirwood.core.services.custom.custom_errors import ConflictError, NotFoundError
+from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
 logger = ogler.getLogger()
 
@@ -58,14 +58,14 @@ def _extract_fields(ked: dict) -> tuple[str, str, str | None, int]:
 
 
 class TelEvent(Document):
-    """A TEL event stored and receipted by weirwood as registrar backer."""
+    """A TEL event stored and receipted by castellan as registrar backer."""
     said = StringField(required=True, primary_key=True)
     regk = StringField(required=True)          # registry prefix (AID)
     vcid = StringField()                       # credential SAID (iss/bis/rev/brv only)
     sn = IntField(required=True, default=0)
     event_type = StringField(required=True)    # vcp | vrt | iss | bis | rev | brv
     raw = BinaryField(required=True)           # raw CESR-encoded event bytes
-    receipt = StringField()                    # weirwood's cigar signature (qb64)
+    receipt = StringField()                    # castellan's cigar signature (qb64)
     created_at = DateTimeField(default=datetime.now)
 
     meta = {
@@ -76,12 +76,12 @@ class TelEvent(Document):
 
 class TelEventService:
     """
-    Receives, signs, and stores TEL events on behalf of the weirwood registrar hab.
+    Receives, signs, and stores TEL events on behalf of the castellan registrar hab.
 
-    On each received event weirwood:
+    On each received event castellan:
       1. Attempts to parse via the existing tvy/parser pipeline.
       2. Extracts event metadata from the CESR-encoded KED.
-      3. Signs the raw bytes with the weirwood hab (unindexed cigar).
+      3. Signs the raw bytes with the castellan hab (unindexed cigar).
       4. Persists the TelEvent document.
       5. Returns the document and the qb64-encoded receipt signature.
     """
@@ -104,7 +104,7 @@ class TelEventService:
             raw: Raw CESR-encoded TEL event bytes.
 
         Returns:
-            (TelEvent, receipt_qb64) — the stored document and weirwood's
+            (TelEvent, receipt_qb64) — the stored document and castellan's
             backer signature over the raw bytes.
 
         Raises:
@@ -136,7 +136,7 @@ class TelEventService:
             logger.warning(f"TEL event {said} could not be fully validated: {e}. "
                            "Storing as pending.")
 
-        # Sign raw bytes with weirwood hab (unindexed cigar — backer receipt format)
+        # Sign raw bytes with castellan hab (unindexed cigar — backer receipt format)
         try:
             cigars = self.hab.sign(ser=raw, indexed=False)
             receipt_qb64 = cigars[0].qb64

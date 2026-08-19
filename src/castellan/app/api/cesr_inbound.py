@@ -11,12 +11,12 @@ from keri.vc import protocoling
 
 logger = ogler.getLogger()
 
-class WeirwoodIpexGrantHandler:
+class CastellanIpexGrantHandler:
     """
-    Handles /ipex/grant EXN messages received at the weirwood CESR endpoint.
+    Handles /ipex/grant EXN messages received at the castellan CESR endpoint.
 
     On receipt of a QVI grant:
-      1. Verifies the grant is an /ipex/grant routed to weirwood's own AID.
+      1. Verifies the grant is an /ipex/grant routed to castellan's own AID.
       2. Parses the embedded ACDC/iss/anc event streams.
       3. Saves the credential to ReceivedCredentialService.
       4. Enqueues an admit cue for QviAdmitDoer to process asynchronously.
@@ -84,12 +84,12 @@ class WeirwoodIpexGrantHandler:
         logger.info(f"Enqueued admit cue for grant_said={serder.said}")
 
 
-class WeirwoodForwardHandler:
+class CastellanForwardHandler:
     """
-    Handles /fwd EXN envelopes arriving at the weirwood CESR endpoint.
+    Handles /fwd EXN envelopes arriving at the castellan CESR endpoint.
 
     IPEX embeds (topic /ipex/grant etc.) are re-dispatched through the parser
-    so WeirwoodIpexGrantHandler can process them.  Multisig embeds are stored
+    so CastellanIpexGrantHandler can process them.  Multisig embeds are stored
     in the message service for intra-enterprise coordination.
 
     parser and exc are set post-construction (after exc is created) to break
@@ -155,9 +155,9 @@ class WeirwoodForwardHandler:
 
 class QviAdmitDoer(doing.DoDoer):
     """
-    Async doer that processes QVI admit cues enqueued by WeirwoodIpexGrantHandler.
+    Async doer that processes QVI admit cues enqueued by CastellanIpexGrantHandler.
 
-    For each cue it builds an /ipex/admit EXN signed by weirwood's hab and
+    For each cue it builds an /ipex/admit EXN signed by castellan's hab and
     delivers it back to the grant sender via StreamPoster.
     """
 

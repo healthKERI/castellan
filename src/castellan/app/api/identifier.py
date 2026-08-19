@@ -1,8 +1,8 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.app.api.identifier module
+castellan.app.api.identifier module
 
-REST endpoint handlers for weirwood-uploaded identifiers:
+REST endpoint handlers for castellan-uploaded identifiers:
 
   POST   /identifiers       — upload a whisper identifier (aid, alias, oobi)
   GET    /identifiers       — list all uploaded identifiers
@@ -17,7 +17,7 @@ import base64
 import falcon
 from keri.help import ogler
 
-from weirwood.core.services.custom.custom_errors import ConflictError, NotFoundError
+from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
 logger = ogler.getLogger()
 
@@ -39,14 +39,14 @@ class IdentifierCollectionEnd:
 
     def on_post(self, req, resp):
         """
-        Upload a whisper identifier to weirwood.
+        Upload a whisper identifier to castellan.
 
         Request body (multipart/form-data):
             doc  — JSON part: {"aid": "...", "alias": "...", "oobi": "..."}
             kel  — binary part: raw CESR-encoded KEL bytes
 
         The uploading AID must match req.context.aid (ESSR-authenticated caller).
-        Alias must be unique across weirwood; returns 409 on conflict.
+        Alias must be unique across castellan; returns 409 on conflict.
 
         Response (201): serialized UploadedIdentifier document.
         """
@@ -113,7 +113,7 @@ class IdentifierCollectionEnd:
 
     def on_get(self, req, resp):
         """
-        List all identifiers uploaded to weirwood.
+        List all identifiers uploaded to castellan.
 
         Response (200):
             {

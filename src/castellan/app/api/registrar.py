@@ -1,16 +1,16 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.app.api.registrar module
+castellan.app.api.registrar module
 
-REST endpoint handlers for the weirwood TEL registrar role:
+REST endpoint handlers for the castellan TEL registrar role:
 
   POST   /registrar/tel-events          — receive a TEL event, sign, store
   GET    /registrar/tel-events/{regk}   — list events for a registry
   GET    /registrar/tel-events/{regk}/{vcid}  — list events for a credential
   GET    /oobi/{cid}/registrar          — standard KERI registrar OOBI
 
-The /oobi endpoint serves weirwood's registrar endpoint information as a
-CESR-encoded KERI reply stream so clients can resolve weirwood via keripy's
+The /oobi endpoint serves castellan's registrar endpoint information as a
+CESR-encoded KERI reply stream so clients can resolve castellan via keripy's
 standard OOBI resolution mechanism.
 """
 import base64
@@ -19,7 +19,7 @@ import falcon
 from keri import kering
 from keri.help import ogler
 
-from weirwood.core.services.custom.custom_errors import ConflictError, NotFoundError
+from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
 logger = ogler.getLogger()
 
@@ -41,8 +41,8 @@ class RegistrarTelCollectionEnd:
     POST /registrar/tel-events
 
     Accepts a raw CESR-encoded TEL event body, parses it, signs it with the
-    weirwood registrar hab, and stores it.  Returns the event metadata plus
-    weirwood's cigar receipt signature.
+    castellan registrar hab, and stores it.  Returns the event metadata plus
+    castellan's cigar receipt signature.
     """
 
     def __init__(self, telSvc):
@@ -62,7 +62,7 @@ class RegistrarTelCollectionEnd:
               "vcid": "<credential SAID or null>",
               "sn":   <sequence number>,
               "event_type": "vcp|vrt|iss|bis|rev|brv",
-              "receipt": "<weirwood cigar signature qb64>"
+              "receipt": "<castellan cigar signature qb64>"
             }
         """
         try:
@@ -143,7 +143,7 @@ class RegistrarBackerEnd:
     """
     GET /registrar/backer
 
-    Returns the AID and base64-encoded KEL of weirwood's non-transferable
+    Returns the AID and base64-encoded KEL of castellan's non-transferable
     backer identifier.  Whisper instances call this during setup to learn
     which AID to include in registry ``baks`` lists and to resolve the
     backer's key state locally.
@@ -173,16 +173,16 @@ class RegistrarOobiEnd:
     """
     GET /oobi/{cid}/registrar
 
-    Serves weirwood's registrar OOBI as a CESR-encoded KERI reply stream.
+    Serves castellan's registrar OOBI as a CESR-encoded KERI reply stream.
 
     This is a standard KERI OOBI endpoint — `registrar` is defined in
     kering.Roles alongside `witness`, `mailbox`, etc.  Clients resolve this
     OOBI using keripy's standard oobiing mechanism so they can verify
-    weirwood's AID and reach its TEL endpoints.
+    castellan's AID and reach its TEL endpoints.
 
     Path params:
         cid — the controller AID whose registrar OOBI is requested
-              (typically weirwood's own AID)
+              (typically castellan's own AID)
     """
 
     def __init__(self, hab):
@@ -212,8 +212,8 @@ class MailboxOobiEnd:
     """
     GET /oobi/{cid}/mailbox/{eid}
 
-    Serves weirwood's mailbox OOBI as a CESR-encoded KERI reply stream so
-    that callers (e.g. mock-gleif) can resolve weirwood's mailbox endpoint
+    Serves castellan's mailbox OOBI as a CESR-encoded KERI reply stream so
+    that callers (e.g. mock-gleif) can resolve castellan's mailbox endpoint
     without going through witnesses.
     """
 

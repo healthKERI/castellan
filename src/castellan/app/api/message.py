@@ -1,8 +1,8 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.app.api.message module
+castellan.app.api.message module
 
-REST endpoint handlers for the weirwood intra-enterprise mailbox:
+REST endpoint handlers for the castellan intra-enterprise mailbox:
 
   POST   /messages        — post a CESR-encoded message for a recipient AID
   GET    /messages        — poll messages for the authenticated AID
@@ -21,7 +21,7 @@ will be added in later steps.
 import falcon
 from keri.help import ogler
 
-from weirwood.core.services.custom.custom_errors import NotFoundError
+from castellan.core.services.custom.custom_errors import NotFoundError
 
 logger = ogler.getLogger()
 

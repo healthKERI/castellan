@@ -1,11 +1,11 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.core.services.identifier_service module
+castellan.core.services.identifier_service module
 
-Service and MongoDB document model for weirwood-uploaded identifiers.
+Service and MongoDB document model for castellan-uploaded identifiers.
 
 Each whisper user uploads exactly one non-group identifier during initialization.
-Weirwood stores these so that all whisper instances can discover peers and
+Castellan stores these so that all whisper instances can discover peers and
 exchange OOBIs before constructing a group multisig.
 """
 from datetime import datetime
@@ -14,7 +14,7 @@ from keri.help import ogler
 from keri.app import habbing
 from mongoengine import DateTimeField, Document, StringField
 
-from weirwood.core.services.custom.custom_errors import ConflictError, NotFoundError
+from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
 logger = ogler.getLogger()
 
@@ -22,7 +22,7 @@ logger = ogler.getLogger()
 class UploadedIdentifier(Document):
     """A single non-group KERI identifier uploaded by a whisper instance."""
     aid = StringField(required=True, primary_key=True)   # KERI AID prefix
-    alias = StringField(required=True, unique=True)      # human-readable alias (unique across weirwood)
+    alias = StringField(required=True, unique=True)      # human-readable alias (unique across castellan)
     oobi = StringField(default="")                       # OOBI URL for peer resolution
     created_at = DateTimeField(default=datetime.now)
 
@@ -33,14 +33,14 @@ class UploadedIdentifier(Document):
 
 
 class IdentifierService:
-    """Service for storing and retrieving weirwood-uploaded identifiers."""
+    """Service for storing and retrieving castellan-uploaded identifiers."""
 
-    def __init__(self, kelSvc=None, parser=None, kvy=None, hby=None, weirwood_hab=None):
+    def __init__(self, kelSvc=None, parser=None, kvy=None, hby=None, castellan_hab=None):
         self.kelSvc = kelSvc
         self.parser = parser
         self.kvy = kvy
         self.hby = hby
-        self.weirwood_hab = weirwood_hab
+        self.castellan_hab = castellan_hab
 
     def upload(self, aid: str, alias: str, kel: bytes, oobi: str = "") -> "UploadedIdentifier":
         """
@@ -48,7 +48,7 @@ class IdentifierService:
 
         Args:
             aid:   KERI AID prefix (primary key).
-            alias: Human-readable alias — must be unique across weirwood.
+            alias: Human-readable alias — must be unique across castellan.
             kel:   Raw CESR-encoded KEL bytes for the identifier.
             oobi:  OOBI URL for peer resolution (optional).
 
@@ -67,7 +67,7 @@ class IdentifierService:
             raise ValueError("kel is required")
 
         if UploadedIdentifier.objects(alias=alias).first() is not None:
-            raise ConflictError(f"Alias '{alias}' is already uploaded to weirwood")
+            raise ConflictError(f"Alias '{alias}' is already uploaded to castellan")
 
         if self.parser is None or self.kvy is None:
             raise RuntimeError("IdentifierService requires parser and kvy to process KEL")
@@ -84,14 +84,14 @@ class IdentifierService:
             try:
                 self.kelSvc.capture_kel(aid)
                 logger.info(f"KEL captured for aid={aid}")
-                if self.hby is not None and self.weirwood_hab is not None:
+                if self.hby is not None and self.castellan_hab is not None:
                     group_hab = self.hby.habs.get(aid)
                     if group_hab is not None and isinstance(group_hab, habbing.GroupHab):
                         role_msgs = group_hab.makeEndRole(
-                            eid=self.weirwood_hab.pre, role=kering.Roles.mailbox
+                            eid=self.castellan_hab.pre, role=kering.Roles.mailbox
                         )
                         self.parser.parse(ims=bytearray(role_msgs))
-                        logger.info(f"Registered weirwood as mailbox for group AID={aid}")
+                        logger.info(f"Registered castellan as mailbox for group AID={aid}")
             except Exception as e:
                 raise RuntimeError(f"KEL capture failed for aid={aid}: {e}")
 

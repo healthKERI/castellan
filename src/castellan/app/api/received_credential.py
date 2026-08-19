@@ -1,13 +1,13 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.app.api.issued_credential module
+castellan.app.api.received_credential module
 
-REST endpoint handlers for /issued-credentials.
+REST endpoint handlers for /received-credentials.
 """
 import falcon
 from keri.help import ogler
 
-from weirwood.core.services.custom.custom_errors import (
+from castellan.core.services.custom.custom_errors import (
     ConflictError, NotFoundError, ValidationError
 )
 
@@ -20,38 +20,35 @@ def _serialize(cred):
         "sad": cred.sad,
         "issuer": cred.issuer,
         "schema": cred.schema,
-        "recipient": cred.recipient,
+        "holder": cred.holder,
         "status": cred.status,
-        "published": cred.published,
         "created_at": cred.created_at.isoformat() if cred.created_at else None,
         "updated_at": cred.updated_at.isoformat() if cred.updated_at else None,
     }
 
 
-class IssuedCredentialCollectionEnd:
-    """Handles GET /issued-credentials and POST /issued-credentials."""
+class ReceivedCredentialCollectionEnd:
+    """Handles GET /received-credentials and POST /received-credentials."""
 
-    def __init__(self, issuedCredentialSvc):
-        self.service = issuedCredentialSvc
+    def __init__(self, receivedCredentialSvc):
+        self.service = receivedCredentialSvc
 
     def on_get(self, req, resp):
-        """List issued credentials with optional filtering and pagination.
+        """List received credentials with optional filtering and pagination.
 
         Query params:
-            filter      - free-text search across all fields and sad dict values
-            issuer      - exact match on issuer AID
-            recipient   - exact match on recipient AID
-            status      - exact match on status string
-            published   - boolean filter
-            page        - zero-indexed page (default 0)
-            page_size   - results per page (default 20)
-            order       - sort field(s), e.g. +created_at or -said (repeatable)
+            filter    - free-text search across all fields and sad dict values
+            issuer    - exact match on issuer AID
+            holder    - exact match on holder AID
+            status    - exact match on status string
+            page      - zero-indexed page (default 0)
+            page_size - results per page (default 20)
+            order     - sort field(s), e.g. +created_at or -said (repeatable)
         """
         filter_term = req.get_param("filter", default=None)
         issuer = req.get_param("issuer", default=None)
-        recipient = req.get_param("recipient", default=None)
+        holder = req.get_param("holder", default=None)
         status = req.get_param("status", default=None)
-        published = req.get_param_as_bool("published", default=None)
         page = req.get_param_as_int("page", default=0)
         page_size = req.get_param_as_int("page_size", default=20)
         order = req.get_param_as_list("order", default=None)
@@ -60,9 +57,8 @@ class IssuedCredentialCollectionEnd:
             credentials, total, num_pages = self.service.list_credentials(
                 filter=filter_term,
                 issuer=issuer,
-                recipient=recipient,
+                holder=holder,
                 status=status,
-                published=published,
                 page=page,
                 page_size=page_size,
                 order=order,
@@ -84,10 +80,10 @@ class IssuedCredentialCollectionEnd:
             )
 
     def on_post(self, req, resp):
-        """Upload an issued credential.
+        """Upload a received credential.
 
         Expects multipart/form-data with:
-            doc  - application/json: { said, issuer, recipient, schema, publish }
+            doc  - application/json: { said, issuer, holder, schema }
             acdc - raw ACDC bytes
         """
         try:
@@ -120,7 +116,7 @@ class IssuedCredentialCollectionEnd:
                     description='Missing required form field: "acdc"',
                 )
 
-            for field in ("said", "issuer", "schema"):
+            for field in ("said", "holder", "schema"):
                 if field not in doc:
                     raise falcon.HTTPBadRequest(
                         title="Bad Request",
@@ -148,14 +144,14 @@ class IssuedCredentialCollectionEnd:
             )
 
 
-class IssuedCredentialResourceEnd:
-    """Handles GET/PUT/DELETE /issued-credentials/{said}."""
+class ReceivedCredentialResourceEnd:
+    """Handles GET/PUT/DELETE /received-credentials/{said}."""
 
-    def __init__(self, issuedCredentialSvc):
-        self.service = issuedCredentialSvc
+    def __init__(self, receivedCredentialSvc):
+        self.service = receivedCredentialSvc
 
     def on_get(self, req, resp, said):
-        """Retrieve a single issued credential.
+        """Retrieve a single received credential.
 
         Query params:
             stream - if true, return raw ACDC bytes (application/cesr+json)
@@ -183,9 +179,9 @@ class IssuedCredentialResourceEnd:
             )
 
     def on_put(self, req, resp, said):
-        """Update an issued credential.
+        """Update a received credential.
 
-        Request body (JSON): { status?, published?, recipient? }
+        Request body (JSON): { status?, holder? }
         """
         try:
             body = req.media
@@ -212,7 +208,7 @@ class IssuedCredentialResourceEnd:
             )
 
     def on_delete(self, req, resp, said):
-        """Delete an issued credential."""
+        """Delete a received credential."""
         try:
             self.service.delete_credential(said)
             resp.status = falcon.HTTP_204

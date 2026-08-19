@@ -1,8 +1,8 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.app.cli.commands.start module
+castellan.app.cli.commands.start module
 
-Launch the weirwood credential server.
+Launch the castellan credential server.
 """
 import argparse
 import logging
@@ -11,9 +11,9 @@ from hio.base import doing
 from keri import __version__, help
 from keri.app import directing
 
-from weirwood.app import resting
+from castellan.app import resting
 
-parser = argparse.ArgumentParser(description="Launch the weirwood credential server")
+parser = argparse.ArgumentParser(description="Launch the castellan credential server")
 parser.set_defaults(handler=lambda args: launch(args))
 parser.add_argument("-V", "--version",
                     action="version",
@@ -45,18 +45,6 @@ parser.add_argument("--port",
                     type=int,
                     default=5923,
                     help="HTTP server port (default 5923).")
-parser.add_argument("--keypath",
-                    action="store",
-                    required=False,
-                    default=None)
-parser.add_argument("--certpath",
-                    action="store",
-                    required=False,
-                    default=None)
-parser.add_argument("--cafilepath",
-                    action="store",
-                    required=False,
-                    default=None)
 parser.add_argument("--loglevel",
                     action="store",
                     required=False,
@@ -67,31 +55,35 @@ parser.add_argument("--logfile",
                     required=False,
                     default=None,
                     help="Path of the log file. Logs are written to stdout if not set.")
+parser.add_argument("--dbhost", action="store", required=False, default=None)
+parser.add_argument("--dbname", action="store", required=False, default=None)
+parser.add_argument("--dbuser", action="store", required=False, default=None)
+parser.add_argument("--dbpass", action="store", required=False, default=None)
 
-FORMAT = "%(asctime)s [weirwood] %(levelname)-8s %(message)s"
+FORMAT = "%(asctime)s [castellan] %(levelname)-8s %(message)s"
 
 
 def launch(args):
     help.ogler.level = logging.getLevelName(args.loglevel)
-    baseFormatter = logging.Formatter(FORMAT)
-    baseFormatter.default_msec_format = None
-    help.ogler.baseConsoleHandler.setFormatter(baseFormatter)
+    base_formatter = logging.Formatter(FORMAT)
+    base_formatter.default_msec_format = None
+    help.ogler.baseConsoleHandler.setFormatter(base_formatter)
     help.ogler.level = logging.getLevelName(args.loglevel)
 
     if args.logfile is not None:
         help.ogler.headDirPath = args.logfile
-        help.ogler.reopen(name="weirwood", temp=False, clear=True)
+        help.ogler.reopen(name="castellan", temp=False, clear=True)
 
     logger = help.ogler.getLogger()
-    logger.info("******* Starting weirwood credential server on %s:%s. *******",
+    logger.info("******* Starting castellan credential server on %s:%s. *******",
                 args.host, args.port)
 
-    runService(args)
+    run_service(args)
 
-    logger.info("******* Ended weirwood credential server. *******")
+    logger.info("******* Ended castellan credential server. *******")
 
 
-def runService(args, expire=0.0):
+def run_service(args, expire=0.0):
     doers = resting.setup(
         name=args.name,
         alias=args.alias,
@@ -100,9 +92,10 @@ def runService(args, expire=0.0):
         headDirPath=args.configDir,
         host=args.host,
         port=args.port,
-        keypath=args.keypath,
-        certpath=args.certpath,
-        cafilepath=args.cafilepath,
+        dbhost=args.dbhost,
+        dbname=args.dbname,
+        dbuser=args.dbuser,
+        dbpass=args.dbpass,
     )
 
     tock = 0.00125

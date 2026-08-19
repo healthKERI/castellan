@@ -1,56 +1,53 @@
 # -*- encoding: utf-8 -*-
 """
-weirwood.app.resting module
+castellan.app.resting module
 
-Falcon application factory and service wiring for the weirwood credential server.
+Falcon application factory and service wiring for the castellan credential server.
 """
-import base64
-import os
-
 import falcon
 from hio.base import doing
 from hio.core import http
 from hio.help import decking
-from hksvc.core import (AccountService, TeamService, Authenticater,
-                         SignatureValidationComponent, VMService,
-                         KeyEventLogService)
-from hksvc.core.basing import databaseInit
-from hksvc.core.haberying import Hby
 from keri import kering
-from keri.app import configing, indirecting, oobiing
 from keri.app import habbing
-from keri.peer import exchanging
+from keri.app import indirecting, oobiing
 from keri.core import eventing, parsing, routing
 from keri.help import ogler
+from keri.peer import exchanging
 from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
 
-from weirwood.app.api.identifier import IdentifierCollectionEnd, IdentifierKelEnd, IdentifierResourceEnd
-from weirwood.app.api.issued_credential import (
+from castellan.app.api.cesr_inbound import (
+    CesrInboundEnd, CastellanForwardHandler, CastellanIpexGrantHandler, QviAdmitDoer,
+)
+from castellan.app.api.identifier import IdentifierCollectionEnd, IdentifierKelEnd, IdentifierResourceEnd
+from castellan.app.api.issued_credential import (
     IssuedCredentialCollectionEnd, IssuedCredentialResourceEnd
 )
-from weirwood.app.api.received_credential import (
+from castellan.app.api.message import MessageCollectionEnd, MessageResourceEnd
+from castellan.app.api.received_credential import (
     ReceivedCredentialCollectionEnd, ReceivedCredentialResourceEnd
 )
-from weirwood.app.api.registrar import (
+from castellan.app.api.registrar import (
     RegistrarTelCollectionEnd, RegistrarTelResourceEnd, RegistrarOobiEnd,
     RegistrarBackerEnd, MailboxOobiEnd,
 )
-from weirwood.app.api.message import MessageCollectionEnd, MessageResourceEnd
-from weirwood.core.services import (
+from castellan.core.authing import Authenticater, SignatureValidationComponent
+from castellan.core.basing import databaseInit
+from castellan.core.haberying import Hby
+from castellan.core.services import (
     IssuedCredentialService, ReceivedCredentialService,
     TelEventService, MessageService, IdentifierService,
 )
-from weirwood.app.api.cesr_inbound import (
-    CesrInboundEnd, WeirwoodForwardHandler, WeirwoodIpexGrantHandler, QviAdmitDoer,
-)
+from castellan.core.services.account_service import AccountService
+from castellan.core.services.key_event_log_service import KeyEventLogService
 
 logger = ogler.getLogger()
-WEIRWOOD_CESR_PORT = 5925
+CASTELLAN_CESR_PORT = 5925
 
 def _register_registrar_endpoint(hab, parser, host, port):
     """
-    Register weirwood's HTTP location and registrar end-role in its KERI database
+    Register castellan's HTTP location and registrar end-role in its KERI database
     so that hab.replyToOobi(role='registrar') can serve a valid OOBI reply.
 
     Writes signed /loc/scheme and /end/role/add reply events into the hab's
@@ -72,7 +69,7 @@ def _register_registrar_endpoint(hab, parser, host, port):
                 parser.parse(ims=ims)
 
         logger.info(
-            f"Registered weirwood registrar endpoint: {url} "
+            f"Registered castellan registrar endpoint: {url} "
             f"(eid={hab.pre}, role={kering.Roles.registrar})"
         )
     except Exception as e:
@@ -82,9 +79,9 @@ def _register_registrar_endpoint(hab, parser, host, port):
         )
 
 
-def setup(name="weirwood", alias="weirwood", base=None, bran=None,
+def setup(name="castellan", alias="castellan", base=None, bran=None,
           headDirPath=None, host="127.0.0.1", port=5923,
-          keypath=None, certpath=None, cafilepath=None):
+          dbhost=None, dbname=None, dbuser=None, dbpass=None):
     """
     Initialise all KERI components, connect to MongoDB, wire the Falcon app,
     and return a list of hio doers ready for directing.runController().
@@ -97,9 +94,10 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
         headDirPath: Config directory override.
         host:        HTTP server bind address (default 127.0.0.1).
         port:        HTTP server port (default 5923).
-        keypath:     TLS key path (optional).
-        certpath:    TLS cert path (optional).
-        cafilepath:  TLS CA file path (optional).
+        dbhost:      MongoDB connection string (default mongodb://localhost:27017).
+        dbname:      MongoDB database name (default healthKERI).
+        dbuser:      MongoDB username for authentication (optional).
+        dbpass:      MongoDB password for authentication (optional).
 
     Returns:
         List of hio Doers.
@@ -135,20 +133,16 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     # ------------------------------------------------------------------ #
     # 2. Configuration & database                                        #
     # ------------------------------------------------------------------ #
-    cf = configing.Configer(name=name, headDirPath=headDirPath)
-    conf = cf.get()
-    conf = conf.get("weirwood", conf.get("hkapi", {}))
+    db_host = dbhost if dbhost else "mongodb://localhost:27017"
+    db_name = dbname if dbname else "castellan"
+    db_user = dbuser if dbuser else None
+    db_pass = dbpass if dbpass else None
 
-    dbHost = conf.get("host", "mongodb://localhost:27017")
-    dbName = conf.get("name", "healthKERI")
-    dbUser = conf.get("username", None)
-    dbPass = conf.get("password", None)
-
-    databaseInit(host=dbHost, name=dbName, username=dbUser, password=dbPass)
-    logger.info(f"Connected to MongoDB at {dbHost}@{dbName}")
+    databaseInit(host=db_host, name=db_name, username=db_user, password=db_pass)
+    logger.info(f"Connected to MongoDB at {db_host}@{db_name}")
 
     # ------------------------------------------------------------------ #
-    # 3. Register weirwood as registrar endpoint (for OOBI resolution)   #
+    # 3. Register castellan as registrar endpoint (for OOBI resolution)   #
     # ------------------------------------------------------------------ #
     _register_registrar_endpoint(hab, parser, host, port)
 
@@ -156,15 +150,13 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     # ------------------------------------------------------------------ #
     # 4. Services                                                        #
     # ------------------------------------------------------------------ #
-    vmSvc = VMService()
-    accountSvc = AccountService(kvy=kvy, parser=parser, vm_svc=vmSvc)
-    kelSvc = KeyEventLogService(hby=hby)
-    teamSvc = TeamService(accountSvc=accountSvc, kelSvc=kelSvc)
-    issuedSvc = IssuedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
-    receivedSvc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
-    telSvc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=backer_hab)
-    msgSvc = MessageService()
-    identifierSvc = IdentifierService(kelSvc=kelSvc, parser=parser, kvy=kvy, hby=hby, weirwood_hab=hab)
+    account_svc = AccountService(kvy=kvy, parser=parser,)
+    kel_svc = KeyEventLogService(hby=hby)
+    issued_svc = IssuedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
+    received_svc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
+    tel_svc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=backer_hab)
+    msg_svc = MessageService()
+    identifier_svc = IdentifierService(kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab)
     admit_cues = decking.Deck()
 
     # ------------------------------------------------------------------ #
@@ -182,21 +174,21 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
 
     # Existing credential routes
     app.add_route("/issued-credentials",
-                  IssuedCredentialCollectionEnd(issuedSvc))
+                  IssuedCredentialCollectionEnd(issued_svc))
     app.add_route("/issued-credentials/{said}",
-                  IssuedCredentialResourceEnd(issuedSvc))
+                  IssuedCredentialResourceEnd(issued_svc))
     app.add_route("/received-credentials",
-                  ReceivedCredentialCollectionEnd(receivedSvc))
+                  ReceivedCredentialCollectionEnd(received_svc))
     app.add_route("/received-credentials/{said}",
-                  ReceivedCredentialResourceEnd(receivedSvc))
+                  ReceivedCredentialResourceEnd(received_svc))
 
     # Registrar routes (TEL events + OOBI)
     app.add_route("/registrar/tel-events",
-                  RegistrarTelCollectionEnd(telSvc))
+                  RegistrarTelCollectionEnd(tel_svc))
     app.add_route("/registrar/tel-events/{regk}",
-                  RegistrarTelResourceEnd(telSvc))
+                  RegistrarTelResourceEnd(tel_svc))
     app.add_route("/registrar/tel-events/{regk}/{vcid}",
-                  RegistrarTelResourceEnd(telSvc))
+                  RegistrarTelResourceEnd(tel_svc))
     # Standard KERI registrar OOBI (kering.Roles.registrar is the standard role name)
     app.add_route("/oobi/{cid}/registrar",
                   RegistrarOobiEnd(hab))
@@ -206,34 +198,33 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
 
     # Uploaded identifier routes
     app.add_route("/identifiers",
-                  IdentifierCollectionEnd(identifierSvc))
+                  IdentifierCollectionEnd(identifier_svc))
     app.add_route("/identifiers/{aid}",
-                  IdentifierResourceEnd(identifierSvc))
+                  IdentifierResourceEnd(identifier_svc))
     app.add_route("/identifiers/{aid}/kel",
-                  IdentifierKelEnd(identifierSvc))
+                  IdentifierKelEnd(identifier_svc))
 
     # Intra-enterprise mailbox routes
     app.add_route("/messages",
-                  MessageCollectionEnd(msgSvc))
+                  MessageCollectionEnd(msg_svc))
     app.add_route("/messages/{id}",
-                  MessageResourceEnd(msgSvc))
+                  MessageResourceEnd(msg_svc))
 
     # Authentication middleware (reuses healthKERI account infrastructure)
-    auth = Authenticater(hab, accountSvc)
+    auth = Authenticater(hab, account_svc)
     app.add_middleware(SignatureValidationComponent(
-        accountSvc=accountSvc, teamSvc=teamSvc,
-        hab=hab, parser=parser, auth=auth,
+        accountSvc=account_svc, hab=hab, parser=parser, auth=auth,
     ))
 
     # CESR ingestion — build Exchanger before constructing the endpoint
-    fwd_handler = WeirwoodForwardHandler(hby=hby, message_service=msgSvc)
-    ipex_handler = WeirwoodIpexGrantHandler(
+    fwd_handler = CastellanForwardHandler(hby=hby, message_service=msg_svc)
+    ipex_handler = CastellanIpexGrantHandler(
         hby=hby,
         hab=hab,
         rgy=rgy,
         verifier=verifier,
         tvy=tvy,
-        received_svc=receivedSvc,
+        received_svc=received_svc,
         admit_cues=admit_cues,
     )
     exc = exchanging.Exchanger(hby=hby, handlers=[fwd_handler, ipex_handler])
@@ -252,20 +243,20 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     cesr_app.add_route("/oobi/{cid}/mailbox/{eid}", MailboxOobiEnd(hab))
     cesr_server = indirecting.createHttpServer(
         host="127.0.0.1",   # 0.0.0.0 in production
-        port=WEIRWOOD_CESR_PORT,
+        port=CASTELLAN_CESR_PORT,
         app=cesr_app,
     )
     cesr_server_doer = http.ServerDoer(server=cesr_server)
 
-    # Register weirwood's CESR endpoint as its mailbox location
-    cesr_url = f"http://127.0.0.1:{WEIRWOOD_CESR_PORT}"
+    # Register castellan's CESR endpoint as its mailbox location
+    cesr_url = f"http://127.0.0.1:{CASTELLAN_CESR_PORT}"
     loc_msgs = hab.makeLocScheme(url=cesr_url, scheme=kering.Schemes.http)
     parser.parse(ims=bytearray(loc_msgs))
 
     mailbox_role_msgs = hab.makeEndRole(eid=hab.pre, role=kering.Roles.mailbox)
     parser.parse(ims=bytearray(mailbox_role_msgs))
 
-    # Dev startup: register weirwood as mailbox for all group HABs already in keystore
+    # Dev startup: register castellan as mailbox for all group HABs already in keystore
     for pre, group_hab in hby.habs.items():
         if isinstance(group_hab, habbing.GroupHab):
             role_msgs = group_hab.makeEndRole(eid=hab.pre, role=kering.Roles.mailbox)
@@ -277,8 +268,7 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
     oobiery = oobiing.Oobiery(hby=hby)
 
     server = indirecting.createHttpServer(
-        host=host, port=port, app=app,
-        keypath=keypath, certpath=certpath, cafilepath=cafilepath,
+        host=host, port=port, app=app
     )
     server_doer = http.ServerDoer(server=server)
 
@@ -297,5 +287,5 @@ def setup(name="weirwood", alias="weirwood", base=None, bran=None,
 
     doers = [*oobiery.doers, server_doer, cesr_server_doer, kvy_escrow_doer, tvy_escrow_doer, admit_doer]
 
-    logger.info(f"Weirwood credential server listening on {host}:{port}")
+    logger.info(f"Castellan credential server listening on {host}:{port}")
     return doers
