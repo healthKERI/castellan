@@ -2,6 +2,7 @@
 """
 Pytest configuration and shared fixtures for Castellan tests.
 """
+
 import pytest
 from unittest.mock import Mock
 
@@ -31,7 +32,7 @@ def mock_kever():
     kever.serder = serder
 
     state = Mock()
-    state.dict = Mock(return_value={'i': 'test_aid', 's': '0'})
+    state.dict = Mock(return_value={"i": "test_aid", "s": "0"})
     kever.state = Mock(return_value=state)
 
     return kever
@@ -41,11 +42,11 @@ def mock_kever():
 def sample_account_doc():
     """Fixture providing sample account document data"""
     return {
-        'aid': 'test_aid_123',
-        'username': 'testuser',
-        'email': 'test@example.com',
-        'first_name': 'Test',
-        'last_name': 'User'
+        "aid": "test_aid_123",
+        "username": "testuser",
+        "email": "test@example.com",
+        "first_name": "Test",
+        "last_name": "User",
     }
 
 

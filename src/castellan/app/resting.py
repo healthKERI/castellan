@@ -4,6 +4,7 @@ castellan.app.resting module
 
 Falcon application factory and service wiring for the castellan credential server.
 """
+
 import falcon
 from hio.base import doing
 from hio.core import http
@@ -18,32 +19,48 @@ from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
 
 from castellan.app.api.cesr_inbound import (
-    CesrInboundEnd, CastellanForwardHandler, CastellanIpexGrantHandler, QviAdmitDoer,
+    CesrInboundEnd,
+    CastellanForwardHandler,
+    CastellanIpexGrantHandler,
+    QviAdmitDoer,
 )
-from castellan.app.api.identifier import IdentifierCollectionEnd, IdentifierKelEnd, IdentifierResourceEnd
+from castellan.app.api.identifier import (
+    IdentifierCollectionEnd,
+    IdentifierKelEnd,
+    IdentifierResourceEnd,
+)
 from castellan.app.api.issued_credential import (
-    IssuedCredentialCollectionEnd, IssuedCredentialResourceEnd
+    IssuedCredentialCollectionEnd,
+    IssuedCredentialResourceEnd,
 )
 from castellan.app.api.message import MessageCollectionEnd, MessageResourceEnd
 from castellan.app.api.received_credential import (
-    ReceivedCredentialCollectionEnd, ReceivedCredentialResourceEnd
+    ReceivedCredentialCollectionEnd,
+    ReceivedCredentialResourceEnd,
 )
 from castellan.app.api.registrar import (
-    RegistrarTelCollectionEnd, RegistrarTelResourceEnd, RegistrarOobiEnd,
-    RegistrarBackerEnd, MailboxOobiEnd,
+    RegistrarTelCollectionEnd,
+    RegistrarTelResourceEnd,
+    RegistrarOobiEnd,
+    RegistrarBackerEnd,
+    MailboxOobiEnd,
 )
 from castellan.core.authing import Authenticater, SignatureValidationComponent
 from castellan.core.basing import databaseInit
 from castellan.core.haberying import Hby
 from castellan.core.services import (
-    IssuedCredentialService, ReceivedCredentialService,
-    TelEventService, MessageService, IdentifierService,
+    IssuedCredentialService,
+    ReceivedCredentialService,
+    TelEventService,
+    MessageService,
+    IdentifierService,
 )
 from castellan.core.services.account_service import AccountService
 from castellan.core.services.key_event_log_service import KeyEventLogService
 
 logger = ogler.getLogger()
 CASTELLAN_CESR_PORT = 5925
+
 
 def _register_registrar_endpoint(hab, parser, host, port):
     """
@@ -79,9 +96,19 @@ def _register_registrar_endpoint(hab, parser, host, port):
         )
 
 
-def setup(name="castellan", alias="castellan", base=None, bran=None,
-          headDirPath=None, host="127.0.0.1", port=5923,
-          dbhost=None, dbname=None, dbuser=None, dbpass=None):
+def setup(
+    name="castellan",
+    alias="castellan",
+    base=None,
+    bran=None,
+    headDirPath=None,
+    host="127.0.0.1",
+    port=5923,
+    dbhost=None,
+    dbname=None,
+    dbuser=None,
+    dbpass=None,
+):
     """
     Initialise all KERI components, connect to MongoDB, wire the Falcon app,
     and return a list of hio doers ready for directing.runController().
@@ -114,8 +141,9 @@ def setup(name="castellan", alias="castellan", base=None, bran=None,
 
     rgy = credentialing.Regery(hby=hby, name=name, temp=False)
     verifier = verifying.Verifier(hby=hby, reger=rgy.reger)
-    tvy = Tevery(reger=verifier.reger, db=hby.db, rvy=rvy,
-                 lax=True, local=False, cues=cues)
+    tvy = Tevery(
+        reger=verifier.reger, db=hby.db, rvy=rvy, lax=True, local=False, cues=cues
+    )
     parser = parsing.Parser(kvy=kvy, rvy=rvy, tvy=tvy, vry=verifier)
 
     hab = hby.habByName(alias)
@@ -146,75 +174,82 @@ def setup(name="castellan", alias="castellan", base=None, bran=None,
     # ------------------------------------------------------------------ #
     _register_registrar_endpoint(hab, parser, host, port)
 
-
     # ------------------------------------------------------------------ #
     # 4. Services                                                        #
     # ------------------------------------------------------------------ #
-    account_svc = AccountService(kvy=kvy, parser=parser,)
+    account_svc = AccountService(
+        kvy=kvy,
+        parser=parser,
+    )
     kel_svc = KeyEventLogService(hby=hby)
     issued_svc = IssuedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
     received_svc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
     tel_svc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=backer_hab)
     msg_svc = MessageService()
-    identifier_svc = IdentifierService(kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab)
+    identifier_svc = IdentifierService(
+        kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab
+    )
     admit_cues = decking.Deck()
 
     # ------------------------------------------------------------------ #
     # 5. Falcon app                                                      #
     # ------------------------------------------------------------------ #
-    app = falcon.App(middleware=falcon.CORSMiddleware(
-        allow_origins="*",
-        allow_credentials="*",
-        expose_headers=[
-            "cesr-attachment", "cesr-date", "content-type",
-            "signature", "signature-input",
-            "signify-resource", "signify-timestamp",
-        ],
-    ))
+    app = falcon.App(
+        middleware=falcon.CORSMiddleware(
+            allow_origins="*",
+            allow_credentials="*",
+            expose_headers=[
+                "cesr-attachment",
+                "cesr-date",
+                "content-type",
+                "signature",
+                "signature-input",
+                "signify-resource",
+                "signify-timestamp",
+            ],
+        )
+    )
 
     # Existing credential routes
-    app.add_route("/issued-credentials",
-                  IssuedCredentialCollectionEnd(issued_svc))
-    app.add_route("/issued-credentials/{said}",
-                  IssuedCredentialResourceEnd(issued_svc))
-    app.add_route("/received-credentials",
-                  ReceivedCredentialCollectionEnd(received_svc))
-    app.add_route("/received-credentials/{said}",
-                  ReceivedCredentialResourceEnd(received_svc))
+    app.add_route("/issued-credentials", IssuedCredentialCollectionEnd(issued_svc))
+    app.add_route("/issued-credentials/{said}", IssuedCredentialResourceEnd(issued_svc))
+    app.add_route(
+        "/received-credentials", ReceivedCredentialCollectionEnd(received_svc)
+    )
+    app.add_route(
+        "/received-credentials/{said}", ReceivedCredentialResourceEnd(received_svc)
+    )
 
     # Registrar routes (TEL events + OOBI)
-    app.add_route("/registrar/tel-events",
-                  RegistrarTelCollectionEnd(tel_svc))
-    app.add_route("/registrar/tel-events/{regk}",
-                  RegistrarTelResourceEnd(tel_svc))
-    app.add_route("/registrar/tel-events/{regk}/{vcid}",
-                  RegistrarTelResourceEnd(tel_svc))
+    app.add_route("/registrar/tel-events", RegistrarTelCollectionEnd(tel_svc))
+    app.add_route("/registrar/tel-events/{regk}", RegistrarTelResourceEnd(tel_svc))
+    app.add_route(
+        "/registrar/tel-events/{regk}/{vcid}", RegistrarTelResourceEnd(tel_svc)
+    )
     # Standard KERI registrar OOBI (kering.Roles.registrar is the standard role name)
-    app.add_route("/oobi/{cid}/registrar",
-                  RegistrarOobiEnd(hab))
+    app.add_route("/oobi/{cid}/registrar", RegistrarOobiEnd(hab))
     # Non-transferable backer identifier AID + KEL for whisper instances to fetch
-    app.add_route("/registrar/backer",
-                  RegistrarBackerEnd(hby=hby, hab=backer_hab))
+    app.add_route("/registrar/backer", RegistrarBackerEnd(hby=hby, hab=backer_hab))
 
     # Uploaded identifier routes
-    app.add_route("/identifiers",
-                  IdentifierCollectionEnd(identifier_svc))
-    app.add_route("/identifiers/{aid}",
-                  IdentifierResourceEnd(identifier_svc))
-    app.add_route("/identifiers/{aid}/kel",
-                  IdentifierKelEnd(identifier_svc))
+    app.add_route("/identifiers", IdentifierCollectionEnd(identifier_svc))
+    app.add_route("/identifiers/{aid}", IdentifierResourceEnd(identifier_svc))
+    app.add_route("/identifiers/{aid}/kel", IdentifierKelEnd(identifier_svc))
 
     # Intra-enterprise mailbox routes
-    app.add_route("/messages",
-                  MessageCollectionEnd(msg_svc))
-    app.add_route("/messages/{id}",
-                  MessageResourceEnd(msg_svc))
+    app.add_route("/messages", MessageCollectionEnd(msg_svc))
+    app.add_route("/messages/{id}", MessageResourceEnd(msg_svc))
 
     # Authentication middleware (reuses healthKERI account infrastructure)
     auth = Authenticater(hab, account_svc)
-    app.add_middleware(SignatureValidationComponent(
-        accountSvc=account_svc, hab=hab, parser=parser, auth=auth,
-    ))
+    app.add_middleware(
+        SignatureValidationComponent(
+            accountSvc=account_svc,
+            hab=hab,
+            parser=parser,
+            auth=auth,
+        )
+    )
 
     # CESR ingestion — build Exchanger before constructing the endpoint
     fwd_handler = CastellanForwardHandler(hby=hby, message_service=msg_svc)
@@ -242,7 +277,7 @@ def setup(name="castellan", alias="castellan", base=None, bran=None,
     cesr_app.add_route("/", cesr_end)
     cesr_app.add_route("/oobi/{cid}/mailbox/{eid}", MailboxOobiEnd(hab))
     cesr_server = indirecting.createHttpServer(
-        host="127.0.0.1",   # 0.0.0.0 in production
+        host="127.0.0.1",  # 0.0.0.0 in production
         port=CASTELLAN_CESR_PORT,
         app=cesr_app,
     )
@@ -267,9 +302,7 @@ def setup(name="castellan", alias="castellan", base=None, bran=None,
     # ------------------------------------------------------------------ #
     oobiery = oobiing.Oobiery(hby=hby)
 
-    server = indirecting.createHttpServer(
-        host=host, port=port, app=app
-    )
+    server = indirecting.createHttpServer(host=host, port=port, app=app)
     server_doer = http.ServerDoer(server=server)
 
     # Continuous escrow processing — runs every 0.5 s so out-of-order or
@@ -280,12 +313,20 @@ def setup(name="castellan", alias="castellan", base=None, bran=None,
             while True:
                 process_fn()
                 yield tock
+
         return doing.doify(escrow_do)
 
     kvy_escrow_doer = _make_escrow_doer(kvy.processEscrows)
     tvy_escrow_doer = _make_escrow_doer(tvy.processEscrows)
 
-    doers = [*oobiery.doers, server_doer, cesr_server_doer, kvy_escrow_doer, tvy_escrow_doer, admit_doer]
+    doers = [
+        *oobiery.doers,
+        server_doer,
+        cesr_server_doer,
+        kvy_escrow_doer,
+        tvy_escrow_doer,
+        admit_doer,
+    ]
 
     logger.info(f"Castellan credential server listening on {host}:{port}")
     return doers

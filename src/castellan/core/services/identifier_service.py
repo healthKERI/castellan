@@ -8,8 +8,10 @@ Each whisper user uploads exactly one non-group identifier during initialization
 Castellan stores these so that all whisper instances can discover peers and
 exchange OOBIs before constructing a group multisig.
 """
+
 from datetime import datetime
 
+from keri import kering
 from keri.help import ogler
 from keri.app import habbing
 from mongoengine import DateTimeField, Document, StringField
@@ -21,9 +23,12 @@ logger = ogler.getLogger()
 
 class UploadedIdentifier(Document):
     """A single non-group KERI identifier uploaded by a whisper instance."""
-    aid = StringField(required=True, primary_key=True)   # KERI AID prefix
-    alias = StringField(required=True, unique=True)      # human-readable alias (unique across castellan)
-    oobi = StringField(default="")                       # OOBI URL for peer resolution
+
+    aid = StringField(required=True, primary_key=True)  # KERI AID prefix
+    alias = StringField(
+        required=True, unique=True
+    )  # human-readable alias (unique across castellan)
+    oobi = StringField(default="")  # OOBI URL for peer resolution
     created_at = DateTimeField(default=datetime.now)
 
     meta = {
@@ -35,14 +40,18 @@ class UploadedIdentifier(Document):
 class IdentifierService:
     """Service for storing and retrieving castellan-uploaded identifiers."""
 
-    def __init__(self, kelSvc=None, parser=None, kvy=None, hby=None, castellan_hab=None):
+    def __init__(
+        self, kelSvc=None, parser=None, kvy=None, hby=None, castellan_hab=None
+    ):
         self.kelSvc = kelSvc
         self.parser = parser
         self.kvy = kvy
         self.hby = hby
         self.castellan_hab = castellan_hab
 
-    def upload(self, aid: str, alias: str, kel: bytes, oobi: str = "") -> "UploadedIdentifier":
+    def upload(
+        self, aid: str, alias: str, kel: bytes, oobi: str = ""
+    ) -> "UploadedIdentifier":
         """
         Store an identifier uploaded by a whisper instance.
 
@@ -70,7 +79,9 @@ class IdentifierService:
             raise ConflictError(f"Alias '{alias}' is already uploaded to castellan")
 
         if self.parser is None or self.kvy is None:
-            raise RuntimeError("IdentifierService requires parser and kvy to process KEL")
+            raise RuntimeError(
+                "IdentifierService requires parser and kvy to process KEL"
+            )
 
         try:
             self.parser.parse(ims=bytearray(kel), kvy=self.kvy, local=False)
@@ -78,7 +89,9 @@ class IdentifierService:
             raise RuntimeError(f"An error occurred parsing KEL into Kevery: {e}")
 
         if aid not in self.kvy.kevers:
-            raise ValueError(f"KEL parsed but AID {aid} not found in kevers — KEL may be incomplete or unverifiable")
+            raise ValueError(
+                f"KEL parsed but AID {aid} not found in kevers — KEL may be incomplete or unverifiable"
+            )
 
         if self.kelSvc is not None:
             try:
@@ -86,12 +99,16 @@ class IdentifierService:
                 logger.info(f"KEL captured for aid={aid}")
                 if self.hby is not None and self.castellan_hab is not None:
                     group_hab = self.hby.habs.get(aid)
-                    if group_hab is not None and isinstance(group_hab, habbing.GroupHab):
+                    if group_hab is not None and isinstance(
+                        group_hab, habbing.GroupHab
+                    ):
                         role_msgs = group_hab.makeEndRole(
                             eid=self.castellan_hab.pre, role=kering.Roles.mailbox
                         )
                         self.parser.parse(ims=bytearray(role_msgs))
-                        logger.info(f"Registered castellan as mailbox for group AID={aid}")
+                        logger.info(
+                            f"Registered castellan as mailbox for group AID={aid}"
+                        )
             except Exception as e:
                 raise RuntimeError(f"KEL capture failed for aid={aid}: {e}")
 

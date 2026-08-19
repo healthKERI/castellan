@@ -5,3 +5,10 @@ http_sfv>=0.9.8
 mongoengine>=0.29.1
 pymongo>=4.11.2
 multicommand>=1.0.0
+requests>=2.34.2
+
+[test]
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0

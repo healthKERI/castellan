@@ -4,6 +4,7 @@ castellan.app.cli.castellan module
 
 Entry point for the castellan CLI.
 """
+
 import multicommand
 from keri import help
 
@@ -24,8 +25,10 @@ def main():
         args.handler(args)
     except Exception as ex:
         import os
+
         if os.getenv("DEBUG_CASTELLAN"):
             import traceback
+
             traceback.print_exc()
         else:
             print(f"ERR: {ex}")

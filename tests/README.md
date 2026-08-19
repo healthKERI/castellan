@@ -4,11 +4,13 @@ This directory contains the test suite for the Castellan credential management s
 
 ## Setup
 
-Install the development dependencies:
+Install the package with test dependencies:
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -e ".[test]"
 ```
+
+This will install pytest, pytest-cov, pytest-mock, and pytest-asyncio.
 
 ## Running Tests
 

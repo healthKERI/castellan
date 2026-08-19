@@ -8,14 +8,13 @@ Castellan acts as a simple relay/mailbox for CESR-encoded events between
 castellan instances and whisper clients (e.g., /multisig/vcp EXN coordination).
 Messages are stored per-recipient and polled via HTTP GET (no SSE for MVP).
 """
+
 import math
 import uuid
 from datetime import datetime
 
 from keri.help import ogler
-from mongoengine import (
-    BinaryField, BooleanField, DateTimeField, Document, StringField
-)
+from mongoengine import BinaryField, BooleanField, DateTimeField, Document, StringField
 
 from castellan.core.services.custom.custom_errors import NotFoundError
 
@@ -29,11 +28,12 @@ TOPIC_REVOCATION = "revocation"
 
 class Message(Document):
     """A CESR-encoded message relayed through the castellan mailbox."""
+
     id = StringField(required=True, primary_key=True)
-    recipient_aid = StringField(required=True)   # target AID
-    sender_aid = StringField(required=True)      # authenticated sender (from ESSR)
-    topic = StringField(required=True)           # multisig | issuance | revocation
-    raw = BinaryField(required=True)             # raw CESR-encoded event bytes
+    recipient_aid = StringField(required=True)  # target AID
+    sender_aid = StringField(required=True)  # authenticated sender (from ESSR)
+    topic = StringField(required=True)  # multisig | issuance | revocation
+    raw = BinaryField(required=True)  # raw CESR-encoded event bytes
     read = BooleanField(default=False)
     created_at = DateTimeField(default=datetime.now)
     multisig_alias = StringField(default="")
@@ -55,8 +55,14 @@ class MessageService:
     # Write
     # ------------------------------------------------------------------
 
-    def post_message(self, recipient_aid: str, sender_aid: str,
-                     topic: str, raw: bytes, multisig_alias: str = "") -> "Message":
+    def post_message(
+        self,
+        recipient_aid: str,
+        sender_aid: str,
+        topic: str,
+        raw: bytes,
+        multisig_alias: str = "",
+    ) -> "Message":
         """
         Store a CESR-encoded message for a recipient AID.
 
@@ -79,18 +85,24 @@ class MessageService:
             read=False,
         )
         msg.save()
-        logger.info(f"Stored message id={msg.id} topic={topic} "
-                    f"recipient={recipient_aid} sender={sender_aid}")
+        logger.info(
+            f"Stored message id={msg.id} topic={topic} "
+            f"recipient={recipient_aid} sender={sender_aid}"
+        )
         return msg
 
     # ------------------------------------------------------------------
     # Read / Poll
     # ------------------------------------------------------------------
 
-    def get_messages(self, recipient_aid: str, topic: str | None = None,
-                     unread_only: bool = False,
-                     page: int = 0, page_size: int = 50
-                     ) -> tuple[list["Message"], int, int]:
+    def get_messages(
+        self,
+        recipient_aid: str,
+        topic: str | None = None,
+        unread_only: bool = False,
+        page: int = 0,
+        page_size: int = 50,
+    ) -> tuple[list["Message"], int, int]:
         """
         Poll messages for an AID with optional topic/read filters and pagination.
 

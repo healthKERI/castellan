@@ -4,6 +4,7 @@ KERI
 hksvc.core.authing package
 
 """
+
 from urllib.parse import quote
 
 import falcon
@@ -15,13 +16,9 @@ logger = ogler.getLogger()
 
 
 class Authenticater:
-    DefaultFields = ["Signify-Resource",
-                     "@method",
-                     "@path",
-                     "Signify-Timestamp"]
+    DefaultFields = ["Signify-Resource", "@method", "@path", "Signify-Timestamp"]
 
-    SigningFields = ["Signify-Resource",
-                     "Signify-Timestamp"]
+    SigningFields = ["Signify-Resource", "Signify-Timestamp"]
 
     def __init__(self, hab, accountSvc: AccountService, account_aid=None):
         self.hab = hab
@@ -34,7 +31,7 @@ class Authenticater:
         if "SIGNIFY-RESOURCE" not in headers:
             raise falcon.HTTPBadRequest(
                 title="Missing Header",
-                description="The 'SIGNIFY-RESOURCE' header is required."
+                description="The 'SIGNIFY-RESOURCE' header is required.",
             )
         return headers["SIGNIFY-RESOURCE"]
 
@@ -50,7 +47,7 @@ class Authenticater:
 
 
 class SignatureValidationComponent:
-    """ Validate Signature and Signature-Input header signatures """
+    """Validate Signature and Signature-Input header signatures"""
 
     def __init__(self, accountSvc, hab, parser, auth: Authenticater, allowed=None):
         self.accountSvc = accountSvc
@@ -61,7 +58,7 @@ class SignatureValidationComponent:
         self.allowed = allowed if allowed is not None else []
 
     def process_request(self, req, rep):
-        """ Process request to ensure has a valid signature from aid
+        """Process request to ensure has a valid signature from aid
 
         Parameters:
             req: Http request object
@@ -80,9 +77,13 @@ class SignatureValidationComponent:
                 req.context.account = account
 
                 rep.status = falcon.HTTP_412
-                rep.complete = True  # This short-circuits Falcon, skipping all further processing
+                rep.complete = (
+                    True  # This short-circuits Falcon, skipping all further processing
+                )
                 return
 
-        rep.complete = True  # This short-circuits Falcon, skipping all further processing
+        rep.complete = (
+            True  # This short-circuits Falcon, skipping all further processing
+        )
         rep.status = falcon.HTTP_401
         return

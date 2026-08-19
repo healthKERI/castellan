@@ -4,6 +4,7 @@ KERI
 hksvc.core.haberying package
 
 """
+
 from keri.app import habbing
 
 
@@ -17,4 +18,3 @@ class Hby:
             Hby._hby[(name, base, bran)] = hby
 
         return Hby._hby[(name, base, bran)]
-

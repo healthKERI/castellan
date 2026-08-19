@@ -13,13 +13,14 @@ The /oobi endpoint serves castellan's registrar endpoint information as a
 CESR-encoded KERI reply stream so clients can resolve castellan via keripy's
 standard OOBI resolution mechanism.
 """
+
 import base64
 
 import falcon
 from keri import kering
 from keri.help import ogler
 
-from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
+from castellan.core.services.custom.custom_errors import ConflictError
 
 logger = ogler.getLogger()
 
@@ -207,6 +208,7 @@ class RegistrarOobiEnd:
         resp.status = falcon.HTTP_200
         resp.content_type = "application/json+cesr"
         resp.data = bytes(msgs)
+
 
 class MailboxOobiEnd:
     """

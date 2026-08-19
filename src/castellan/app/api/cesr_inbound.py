@@ -2,14 +2,14 @@
 
 import falcon
 from hio.base import doing
-from hio.help import decking
 from keri.app import forwarding
-from keri.core import coring, parsing, serdering
+from keri.core import coring, parsing
 from keri.help import helping, ogler
 from keri.peer import exchanging
 from keri.vc import protocoling
 
 logger = ogler.getLogger()
+
 
 class CastellanIpexGrantHandler:
     """
@@ -21,6 +21,7 @@ class CastellanIpexGrantHandler:
       3. Saves the credential to ReceivedCredentialService.
       4. Enqueues an admit cue for QviAdmitDoer to process asynchronously.
     """
+
     resource = "/ipex/grant"
 
     def __init__(self, hby, hab, rgy, verifier, tvy, received_svc, admit_cues):
@@ -69,7 +70,9 @@ class CastellanIpexGrantHandler:
         # Persist via ReceivedCredentialService (mirrors existing save_credential pattern).
         try:
             if not self.rgy.reger.saved.get(keys=said):
-                logger.warning(f"Credential {said} not in reger.saved after parsing; will retry in admit doer")
+                logger.warning(
+                    f"Credential {said} not in reger.saved after parsing; will retry in admit doer"
+                )
             else:
                 holder = self.hab.pre
                 self.received_svc.save_credential(
@@ -95,13 +98,14 @@ class CastellanForwardHandler:
     parser and exc are set post-construction (after exc is created) to break
     the circular dependency: exc needs this handler, this handler needs exc.
     """
+
     resource = "/fwd"
 
     def __init__(self, hby, message_service):
         self.hby = hby
         self.message_service = message_service
         self.parser = None  # set by resting.py after exc is created
-        self.exc = None     # set by resting.py after exc is created
+        self.exc = None  # set by resting.py after exc is created
 
     def verify(self, serder, attachments=None):
         return True  # Exchanger validates sender KEL before calling handle()
@@ -133,9 +137,15 @@ class CastellanForwardHandler:
 
             # Dispatch IPEX embeds to the parser so /ipex/grant handler fires.
             inner_route = embed.get("r", "")
-            if inner_route.startswith("/ipex") and self.parser is not None and self.exc is not None:
+            if (
+                inner_route.startswith("/ipex")
+                and self.parser is not None
+                and self.exc is not None
+            ):
                 try:
-                    self.parser.parse(ims=bytearray(inner_raw), exc=self.exc, local=False)
+                    self.parser.parse(
+                        ims=bytearray(inner_raw), exc=self.exc, local=False
+                    )
                 except Exception as e:
                     logger.warning(f"Could not re-dispatch /fwd embed '{label}': {e}")
             else:
@@ -171,7 +181,7 @@ class QviAdmitDoer(doing.DoDoer):
     def admitDo(self, tymth, tock=0.5, **kwa):
         self.wind(tymth)
         self.tock = tock
-        _ = (yield self.tock)
+        _ = yield self.tock
 
         while True:
             while self.admit_cues:
@@ -181,7 +191,9 @@ class QviAdmitDoer(doing.DoDoer):
 
                 grant_serder, _ = exchanging.cloneMessage(self.hby, grant_said)
                 if grant_serder is None:
-                    logger.error(f"QviAdmitDoer: grant {grant_said} not found in DB, skipping")
+                    logger.error(
+                        f"QviAdmitDoer: grant {grant_said} not found in DB, skipping"
+                    )
                     yield self.tock
                     continue
 
@@ -206,7 +218,7 @@ class QviAdmitDoer(doing.DoDoer):
                         topic="credential",
                     )
                     admit_atc = exchanging.serializeMessage(self.hby, exn.said)
-                    del admit_atc[:exn.size]
+                    del admit_atc[: exn.size]
                     postman.send(serder=exn, attachment=admit_atc)
 
                     deliver_doer = doing.DoDoer(doers=postman.deliver())
@@ -216,10 +228,14 @@ class QviAdmitDoer(doing.DoDoer):
                         yield self.tock
 
                     self.remove([deliver_doer])
-                    logger.info(f"QviAdmitDoer: sent admit for grant_said={grant_said} to {sender}")
+                    logger.info(
+                        f"QviAdmitDoer: sent admit for grant_said={grant_said} to {sender}"
+                    )
 
                 except Exception as e:
-                    logger.error(f"QviAdmitDoer: failed to send admit for {grant_said}: {e}")
+                    logger.error(
+                        f"QviAdmitDoer: failed to send admit for {grant_said}: {e}"
+                    )
 
             yield self.tock
 

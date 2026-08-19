@@ -12,6 +12,7 @@ Authentication: all routes require ESSR via SignatureValidationComponent.
 The uploading AID is derived from req.context.aid (set by middleware).
 Alias uniqueness is enforced server-side; duplicate alias → 409 Conflict.
 """
+
 import base64
 
 import falcon
@@ -27,7 +28,9 @@ def _serialize(identifier) -> dict:
         "aid": identifier.aid,
         "alias": identifier.alias,
         "oobi": identifier.oobi or "",
-        "created_at": identifier.created_at.isoformat() if identifier.created_at else None,
+        "created_at": (
+            identifier.created_at.isoformat() if identifier.created_at else None
+        ),
     }
 
 
@@ -83,14 +86,22 @@ class IdentifierCollectionEnd:
         oobi = doc.get("oobi", "").strip()
 
         if not aid:
-            raise falcon.HTTPBadRequest(title="Bad Request", description="'aid' is required.")
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'aid' is required."
+            )
         if not alias:
-            raise falcon.HTTPBadRequest(title="Bad Request", description="'alias' is required.")
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'alias' is required."
+            )
         if not kel:
-            raise falcon.HTTPBadRequest(title="Bad Request", description="'kel' part is required.")
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'kel' part is required."
+            )
 
         try:
-            identifier = self.service.upload(aid=aid, alias=alias, kel=bytes(kel), oobi=oobi)
+            identifier = self.service.upload(
+                aid=aid, alias=alias, kel=bytes(kel), oobi=oobi
+            )
         except ConflictError as e:
             raise falcon.HTTPConflict(
                 title="Conflict",

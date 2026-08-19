@@ -6,13 +6,12 @@ Service and MongoDB document model for TEL (Transaction Event Log) events.
 Castellan acts as an active registrar backer: it parses, signs, and stores
 each TEL event it receives, returning its signature as a backer receipt.
 """
+
 from datetime import datetime
 
 from keri.core import coring
 from keri.help import ogler
-from mongoengine import (
-    BinaryField, DateTimeField, Document, IntField, StringField
-)
+from mongoengine import BinaryField, DateTimeField, Document, IntField, StringField
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
@@ -39,7 +38,7 @@ def _extract_fields(ked: dict) -> tuple[str, str, str | None, int]:
     sn = int(sn_raw, 16) if isinstance(sn_raw, str) else int(sn_raw)
 
     if event_type == "vcp":
-        regk = ked.get("d", "")   # regk IS the SAID of the vcp event
+        regk = ked.get("d", "")  # regk IS the SAID of the vcp event
         vcid = None
     elif event_type == "vrt":
         regk = ked.get("i", "")
@@ -59,13 +58,14 @@ def _extract_fields(ked: dict) -> tuple[str, str, str | None, int]:
 
 class TelEvent(Document):
     """A TEL event stored and receipted by castellan as registrar backer."""
+
     said = StringField(required=True, primary_key=True)
-    regk = StringField(required=True)          # registry prefix (AID)
-    vcid = StringField()                       # credential SAID (iss/bis/rev/brv only)
+    regk = StringField(required=True)  # registry prefix (AID)
+    vcid = StringField()  # credential SAID (iss/bis/rev/brv only)
     sn = IntField(required=True, default=0)
-    event_type = StringField(required=True)    # vcp | vrt | iss | bis | rev | brv
-    raw = BinaryField(required=True)           # raw CESR-encoded event bytes
-    receipt = StringField()                    # castellan's cigar signature (qb64)
+    event_type = StringField(required=True)  # vcp | vrt | iss | bis | rev | brv
+    raw = BinaryField(required=True)  # raw CESR-encoded event bytes
+    receipt = StringField()  # castellan's cigar signature (qb64)
     created_at = DateTimeField(default=datetime.now)
 
     meta = {
@@ -133,8 +133,10 @@ class TelEventService:
             ims = bytearray(raw)
             self.parser.parse(ims=ims, tvy=self.tvy, local=True)
         except Exception as e:
-            logger.warning(f"TEL event {said} could not be fully validated: {e}. "
-                           "Storing as pending.")
+            logger.warning(
+                f"TEL event {said} could not be fully validated: {e}. "
+                "Storing as pending."
+            )
 
         # Sign raw bytes with castellan hab (unindexed cigar — backer receipt format)
         try:

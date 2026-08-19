@@ -18,6 +18,7 @@ Primary use case: routing /multisig/vcp EXN events between group members
 during multisig registry inception.  Other topics (issuance, revocation)
 will be added in later steps.
 """
+
 import falcon
 from keri.help import ogler
 
@@ -34,10 +35,14 @@ def _serialize(msg) -> dict:
         "recipient_aid": msg.recipient_aid,
         "sender_aid": msg.sender_aid,
         "topic": msg.topic,
-        "raw": msg.raw.decode("utf-8") if isinstance(msg.raw, (bytes, bytearray)) else msg.raw,
+        "raw": (
+            msg.raw.decode("utf-8")
+            if isinstance(msg.raw, (bytes, bytearray))
+            else msg.raw
+        ),
         "read": msg.read,
         "created_at": msg.created_at.isoformat() if msg.created_at else None,
-        "multisig_alias": msg.multisig_alias if hasattr(msg, "multisig_alias") else ""
+        "multisig_alias": msg.multisig_alias if hasattr(msg, "multisig_alias") else "",
     }
 
 
@@ -97,7 +102,9 @@ class MessageCollectionEnd:
                 f"POST /messages: read {len(raw) if raw else 0} bytes from request body"
             )
         except Exception as e:
-            logger.error(f"POST /messages 400: failed to read request body — {e}", exc_info=True)
+            logger.error(
+                f"POST /messages 400: failed to read request body — {e}", exc_info=True
+            )
             raise falcon.HTTPBadRequest(
                 title="Read Error",
                 description=f"Could not read request body: {e}",
@@ -122,7 +129,7 @@ class MessageCollectionEnd:
                 sender_aid=sender_aid,
                 topic=topic,
                 raw=raw,
-                multisig_alias=multisig_alias
+                multisig_alias=multisig_alias,
             )
         except Exception as e:
             logger.error(
@@ -164,7 +171,9 @@ class MessageCollectionEnd:
         """
         recipient_aid = req.get_param("aid")
         if not recipient_aid:
-            logger.warning("GET /messages: missing required 'aid' query param — returning 400")
+            logger.warning(
+                "GET /messages: missing required 'aid' query param — returning 400"
+            )
             raise falcon.HTTPBadRequest(
                 title="Bad Request",
                 description="Required query param 'aid' (recipient AID) is missing.",

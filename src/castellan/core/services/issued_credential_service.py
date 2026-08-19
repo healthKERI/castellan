@@ -4,18 +4,19 @@ castellan.core.services.issued_credential_service module
 
 Service and MongoDB document model for credentials issued by this account.
 """
+
 import math
 from datetime import datetime
 
 from keri.app.habbing import Habery
 from keri.core import coring, serdering
 from keri.help import ogler
-from mongoengine import (
-    BooleanField, DateTimeField, DictField, Document, Q, StringField
-)
+from mongoengine import BooleanField, DateTimeField, DictField, Document, Q, StringField
 
 from castellan.core.services.custom.custom_errors import (
-    ConflictError, NotFoundError, ValidationError
+    ConflictError,
+    NotFoundError,
+    ValidationError,
 )
 
 logger = ogler.getLogger()
@@ -37,12 +38,13 @@ def flatten_values(obj) -> str:
 
 class IssuedCredential(Document):
     """ACDC credential issued by this account to a recipient."""
+
     said = StringField(required=True, primary_key=True)
     sad = DictField(required=True)
-    issuer = StringField(required=True)       # account AID (us)
+    issuer = StringField(required=True)  # account AID (us)
     schema = DictField(required=True)
-    recipient = StringField()                 # holder AID
-    status = StringField()                    # "issued" | "revoked"
+    recipient = StringField()  # holder AID
+    status = StringField()  # "issued" | "revoked"
     published = BooleanField(default=False)
     search_text = StringField(db_field="_search_text")  # flattened sad values
     created_at = DateTimeField(default=datetime.now)
@@ -63,9 +65,17 @@ class IssuedCredentialService:
     # Query
     # ------------------------------------------------------------------
 
-    def list_credentials(self, filter=None, issuer=None, recipient=None,
-                          status=None, published=None,
-                          page=0, page_size=20, order=None):
+    def list_credentials(
+        self,
+        filter=None,
+        issuer=None,
+        recipient=None,
+        status=None,
+        published=None,
+        page=0,
+        page_size=20,
+        order=None,
+    ):
         """
         Return a page of IssuedCredential documents matching the given filters.
 
@@ -99,11 +109,11 @@ class IssuedCredentialService:
         # Free-text search across fixed fields and sad values
         if filter:
             qs = qs.filter(
-                Q(said__icontains=filter) |
-                Q(issuer__icontains=filter) |
-                Q(recipient__icontains=filter) |
-                Q(status__icontains=filter) |
-                Q(search_text__icontains=filter)
+                Q(said__icontains=filter)
+                | Q(issuer__icontains=filter)
+                | Q(recipient__icontains=filter)
+                | Q(status__icontains=filter)
+                | Q(search_text__icontains=filter)
             )
 
         # Ordering
@@ -233,7 +243,6 @@ class IssuedCredentialService:
 
     def get_credential_stream(self, said: str) -> bytearray:
         """Return raw ACDC bytes for the given SAID (for stream=true requests)."""
-        from keri import core, kering
 
         if said not in self.tvy.tevers:
             raise NotFoundError(f"Credential not in tevers: {said}")

@@ -8,9 +8,18 @@ from keri.core.coring import NonTransDex
 from keri.core.parsing import Parser
 from keri.db import dbing
 from keri.help import helping, ogler
-from mongoengine import Document, StringField, DictField, ListField, IntField, EmbeddedDocumentField, EmbeddedDocument
+from mongoengine import (
+    Document,
+    StringField,
+    DictField,
+    ListField,
+    IntField,
+    EmbeddedDocumentField,
+    EmbeddedDocument,
+)
 
 logger = ogler.getLogger()
+
 
 class Aid(Document):
     aid = StringField(required=True, primary_key=True)
@@ -35,6 +44,7 @@ class Tsgs(EmbeddedDocument):
     dig = StringField(required=True)
     sigs = ListField(required=False, default=[])
 
+
 class Scgs(EmbeddedDocument):
     verfer = StringField(required=True)
     cigar = StringField(required=True)
@@ -49,7 +59,7 @@ class Reply(Document):
 
 
 class KeyEventLogService:
-    """ Key event log service for managing and retrieving key event logs and identifier state"""
+    """Key event log service for managing and retrieving key event logs and identifier state"""
 
     def __init__(self, hby: Habery | None):
         self.hby = hby
@@ -61,7 +71,9 @@ class KeyEventLogService:
         self.hby.kvy.processEscrows()
 
         if aid not in self.hby.kevers:
-            raise ValueError("unable to add key event log, incomplete or unverifiable KEL passed in")
+            raise ValueError(
+                "unable to add key event log, incomplete or unverifiable KEL passed in"
+            )
 
         self.capture_kel(aid)
 
@@ -78,7 +90,7 @@ class KeyEventLogService:
         ident = dict(aid=aid, key_state=key_state)
         Aid(**ident).save()
 
-        if hasattr(aid, 'encode'):
+        if hasattr(aid, "encode"):
             aid = aid.encode("utf-8")
 
         for _, fn, dig in self.hby.db.getFelItemPreIter(aid, fn=0):
@@ -91,7 +103,7 @@ class KeyEventLogService:
                 serder = self.hby.db.rpys.get(keys=(saider.qb64,))
                 cigars = self.hby.db.scgs.get(keys=(saider.qb64,))
                 if len(cigars) == 1:
-                    (verfer, cigar) = cigars[0]
+                    verfer, cigar = cigars[0]
                     cigar.verfer = verfer
                     cigars = [cigar]
                 else:
@@ -105,7 +117,7 @@ class KeyEventLogService:
                 serder = self.hby.db.rpys.get(keys=(saider.qb64,))
                 cigars = self.hby.db.scgs.get(keys=(saider.qb64,))
                 if len(cigars) == 1:
-                    (verfer, cigar) = cigars[0]
+                    verfer, cigar = cigars[0]
                     cigar.verfer = verfer
                     cigars = [cigar]
                 else:
@@ -134,9 +146,15 @@ class KeyEventLogService:
 
         # add indexed witness signatures to attachments
         reply["tsgs"] = []
-        for (prefixer, seqner, diger, sigers) in tsgs:
-            reply["tsgs"].append(Tsgs(prefix=prefixer.qb64, seq=seqner.qb64, dig=diger.qb64, sigs=[siger.qb64 for siger in sigers]))
-
+        for prefixer, seqner, diger, sigers in tsgs:
+            reply["tsgs"].append(
+                Tsgs(
+                    prefix=prefixer.qb64,
+                    seq=seqner.qb64,
+                    dig=diger.qb64,
+                    sigs=[siger.qb64 for siger in sigers],
+                )
+            )
 
         reply = Reply(**reply)
         reply.save()
@@ -153,16 +171,15 @@ class KeyEventLogService:
         if said == kever.serder.said:
             return False
 
-        snh = ident.key_state['s']
+        snh = ident.key_state["s"]
         sn = int(snh, 16)
 
-        for dig in self.hby.db.getKelIter(aid, sn=sn+1):
+        for dig in self.hby.db.getKelIter(aid, sn=sn + 1):
             self.serialize_event(aid, 0, bytes(dig))
 
-        Aid(**{
-            'aid': aid,
-            'key_state': asdict(self.hby.kvy.kevers[aid].state())
-        }).save()
+        Aid(
+            **{"aid": aid, "key_state": asdict(self.hby.kvy.kevers[aid].state())}
+        ).save()
         return True
 
     def serialize_event(self, aid, fn, dig):
@@ -174,7 +191,7 @@ class KeyEventLogService:
         serder = serdering.SerderKERI(raw=bytes(raw))
         event["sad"] = serder.ked
         event["said"] = serder.said
-        event["sn"] =  serder.sn
+        event["sn"] = serder.sn
 
         if (evt := Event.objects(said=serder.said).first()) is not None:
             return evt
@@ -210,7 +227,14 @@ class KeyEventLogService:
                 seqner = coring.Seqner(qb64b=quad, strip=True)
                 saider = coring.Saider(qb64b=quad, strip=True)
                 siger = core.Siger(qb64b=quad, strip=True)
-                event["vrcs"].append(dict(pre=prefixer.qb64, snh=seqner.snh, said=saider.qb64, sig=siger.qb64))
+                event["vrcs"].append(
+                    dict(
+                        pre=prefixer.qb64,
+                        snh=seqner.snh,
+                        said=saider.qb64,
+                        sig=siger.qb64,
+                    )
+                )
 
         # add nontrans endorsement couples to attachments not witnesses
         # may have been originally key event attachments or receipted endorsements
@@ -238,8 +262,6 @@ class KeyEventLogService:
         ims.extend(self.get_rpy_stream(aid))
         return ims
 
-
-
     @staticmethod
     def get_kel(aid):
         return Event.objects(sad__i=aid).order_by("sn")
@@ -250,20 +272,30 @@ class KeyEventLogService:
         ims = bytearray()
         for event in events:
             atc = bytearray()  # attachments
-            sn = event.sad['s']
+
             serder = serdering.SerderKERI(sad=event.sad)
             ims.extend(serder.raw)
 
             sigs = event.sigs
-            atc.extend(core.Counter(code=core.Codens.ControllerIdxSigs,
-                                    count=len(sigs), gvrsn=kering.Vrsn_1_0).qb64b)
+            atc.extend(
+                core.Counter(
+                    code=core.Codens.ControllerIdxSigs,
+                    count=len(sigs),
+                    gvrsn=kering.Vrsn_1_0,
+                ).qb64b
+            )
             for sig in sigs:
                 atc.extend(core.Siger(qb64=sig).qb64b)
 
             wigs = event.wigs
             if wigs:
-                atc.extend(core.Counter(code=core.Codens.WitnessIdxSigs,
-                                        count=len(wigs), gvrsn=kering.Vrsn_1_0).qb64b)
+                atc.extend(
+                    core.Counter(
+                        code=core.Codens.WitnessIdxSigs,
+                        count=len(wigs),
+                        gvrsn=kering.Vrsn_1_0,
+                    ).qb64b
+                )
                 for wig in wigs:
                     atc.extend(core.Siger(qb64=wig).qb64b)
 
@@ -272,8 +304,13 @@ class KeyEventLogService:
                 seqner = coring.Seqner(snh=couple["snh"])
                 saider = coring.Saider(qb64=couple["said"])
 
-                atc.extend(core.Counter(code=core.Codens.SealSourceCouples,
-                                        count=1, gvrsn=kering.Vrsn_1_0).qb64b)
+                atc.extend(
+                    core.Counter(
+                        code=core.Codens.SealSourceCouples,
+                        count=1,
+                        gvrsn=kering.Vrsn_1_0,
+                    ).qb64b
+                )
                 atc.extend(seqner.qb64b)
                 atc.extend(saider.qb64b)
 
@@ -281,8 +318,13 @@ class KeyEventLogService:
             # may have been originally key event attachments or receipted endorsements
             quads = event.vrcs
             if quads:
-                atc.extend(core.Counter(code=core.Codens.TransReceiptQuadruples,
-                                        count=len(quads), gvrsn=kering.Vrsn_1_0).qb64b)
+                atc.extend(
+                    core.Counter(
+                        code=core.Codens.TransReceiptQuadruples,
+                        count=len(quads),
+                        gvrsn=kering.Vrsn_1_0,
+                    ).qb64b
+                )
                 for quad in quads:
                     prefixer = coring.Prefixer(qb64=quad["pre"])
                     seqner = coring.Seqner(snh=quad["snh"])
@@ -298,8 +340,13 @@ class KeyEventLogService:
             # may have been originally key event attachments or receipted endorsements
             coups = event.rcts
             if coups:
-                atc.extend(core.Counter(code=core.Codens.NonTransReceiptCouples,
-                                        count=len(coups), gvrsn=kering.Vrsn_1_0).qb64b)
+                atc.extend(
+                    core.Counter(
+                        code=core.Codens.NonTransReceiptCouples,
+                        count=len(coups),
+                        gvrsn=kering.Vrsn_1_0,
+                    ).qb64b
+                )
                 for coup in coups:
                     verfer = coring.Verfer(qb64=coup["verver"])
                     cigar = coring.Cigar(qb64=coup["cig"])
@@ -309,17 +356,29 @@ class KeyEventLogService:
 
             # add first seen replay couple to attachments
             dts = coring.Dater(dts=event.dts)
-            atc.extend(core.Counter(code=core.Codens.FirstSeenReplayCouples,
-                                    count=1, gvrsn=kering.Vrsn_1_0).qb64b)
-            atc.extend(core.Number(num=fn, code=core.NumDex.Huge).qb64b)  # may not need to be Huge
+            atc.extend(
+                core.Counter(
+                    code=core.Codens.FirstSeenReplayCouples,
+                    count=1,
+                    gvrsn=kering.Vrsn_1_0,
+                ).qb64b
+            )
+            atc.extend(
+                core.Number(num=fn, code=core.NumDex.Huge).qb64b
+            )  # may not need to be Huge
             atc.extend(dts.qb64b)
 
             # prepend pipelining counter to attachments
             if len(atc) % 4:
-                raise ValueError("Invalid attachments size={}, nonintegral"
-                                 " quadlets.".format(len(atc)))
-            pcnt = core.Counter(code=core.Codens.AttachmentGroup,
-                                count=(len(atc) // 4), gvrsn=kering.Vrsn_1_0).qb64b
+                raise ValueError(
+                    "Invalid attachments size={}, nonintegral"
+                    " quadlets.".format(len(atc))
+                )
+            pcnt = core.Counter(
+                code=core.Codens.AttachmentGroup,
+                count=(len(atc) // 4),
+                gvrsn=kering.Vrsn_1_0,
+            ).qb64b
             ims.extend(pcnt)
             ims.extend(atc)
 
@@ -339,14 +398,21 @@ class KeyEventLogService:
             ims.extend(serder.raw)
 
             if rpy.cigs:
-                atc.extend(Counter(Codens.NonTransReceiptCouples, count=len(rpy.cigs),
-                                   gvrsn=kering.Vrsn_1_0).qb64b)
+                atc.extend(
+                    Counter(
+                        Codens.NonTransReceiptCouples,
+                        count=len(rpy.cigs),
+                        gvrsn=kering.Vrsn_1_0,
+                    ).qb64b
+                )
                 for scgs in rpy.cigs:
                     verfer = coring.Verfer(qb64=scgs.verfer)
                     cigar = coring.Cigar(qb64=scgs.cigar, verfer=verfer)
                     if cigar.verfer.code not in NonTransDex:
-                        raise ValueError("Attempt to use tranferable prefix={} for "
-                                         "receipt.".format(cigar.verfer.qb64))
+                        raise ValueError(
+                            "Attempt to use tranferable prefix={} for "
+                            "receipt.".format(cigar.verfer.qb64)
+                        )
                     atc.extend(cigar.verfer.qb64b)
                     atc.extend(cigar.qb64b)
 
@@ -356,22 +422,35 @@ class KeyEventLogService:
                     seqner = coring.Seqner(qb64=tsg.seq)
                     diger = coring.Diger(qb64=tsg.dig)
 
-                    atc.extend(Counter(Codens.TransIdxSigGroups, count=1,
-                                       gvrsn=kering.Vrsn_1_0).qb64b)
+                    atc.extend(
+                        Counter(
+                            Codens.TransIdxSigGroups, count=1, gvrsn=kering.Vrsn_1_0
+                        ).qb64b
+                    )
                     atc.extend(prefixer.qb64b)
                     atc.extend(seqner.qb64b)
                     atc.extend(diger.qb64b)
-                    atc.extend(Counter(Codens.ControllerIdxSigs, count=len(tsg.sigs),
-                                       gvrsn=kering.Vrsn_1_0).qb64b)
+                    atc.extend(
+                        Counter(
+                            Codens.ControllerIdxSigs,
+                            count=len(tsg.sigs),
+                            gvrsn=kering.Vrsn_1_0,
+                        ).qb64b
+                    )
                     for sig in tsg.sigs:
                         siger = core.Siger(qb64=sig)
                         atc.extend(siger.qb64b)
 
             if len(atc) % 4:
-                raise ValueError("Invalid attachments size={}, nonintegral"
-                                 " quadlets.".format(len(atc)))
-            ims.extend(Counter(Codens.AttachmentGroup,
-                               count=(len(atc) // 4), gvrsn=kering.Vrsn_1_0).qb64b)
+                raise ValueError(
+                    "Invalid attachments size={}, nonintegral"
+                    " quadlets.".format(len(atc))
+                )
+            ims.extend(
+                Counter(
+                    Codens.AttachmentGroup, count=(len(atc) // 4), gvrsn=kering.Vrsn_1_0
+                ).qb64b
+            )
             ims.extend(atc)
 
         return ims
@@ -379,13 +458,18 @@ class KeyEventLogService:
     def get_keystate(self, aid):
         """Get the key state of the given aid from the key event log, parse KEL from mongodb if not up to date."""
         aid_obj = Aid.objects(aid=aid).first()
-        if aid not in self.hby.kevers or aid_obj.key_state.get("s") != self.hby.kevers[aid].serder.snh:
+        if (
+            aid not in self.hby.kevers
+            or aid_obj.key_state.get("s") != self.hby.kevers[aid].serder.snh
+        ):
             ims = self.get_kel_stream(aid)
             parsing.Parser().parse(bytes(ims), kvy=self.hby.kvy)
             self.hby.kvy.processEscrows()
 
             if aid not in self.hby.kevers:
-                raise ValueError("unable to add key event log, incomplete or unverifiable KEL passed in")
+                raise ValueError(
+                    "unable to add key event log, incomplete or unverifiable KEL passed in"
+                )
 
         return self.hby.kevers[aid].state()
 
@@ -416,7 +500,7 @@ class KeyEventLogService:
         return delegates
 
     def process_delegator_event_seals(self, srdr):
-        """ Process seals from a delegator's event to find and validate delegate identifiers
+        """Process seals from a delegator's event to find and validate delegate identifiers
 
         Takes a serialized KERI event and checks its seals for valid delegate anchors.
         A valid delegate must meet the following criteria:
@@ -440,11 +524,15 @@ class KeyEventLogService:
         delegator = srdr.pre
         delegates = []
         for anchor in srdr.seals:
-            if 'i' not in anchor and 's' not in anchor and 'd' not in anchor:  # Event seal anchor
+            if (
+                "i" not in anchor and "s" not in anchor and "d" not in anchor
+            ):  # Event seal anchor
                 continue
 
-            delegate = anchor['i']
-            if anchor['s'] != '0' or delegate != anchor['d']:  # Ensure this is an inception anchor
+            delegate = anchor["i"]
+            if (
+                anchor["s"] != "0" or delegate != anchor["d"]
+            ):  # Ensure this is an inception anchor
                 continue
 
             if delegate not in self.hby.kevers:

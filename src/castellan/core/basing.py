@@ -7,6 +7,7 @@ castellan.core.basing package
 
 from mongoengine import connect
 
+
 def databaseInit(host, name, username=None, password=None):
     # Initialize the MongoDB client
     kwa = dict()

@@ -4,18 +4,19 @@ castellan.core.services.received_credential_service module
 
 Service and MongoDB document model for credentials received by this account.
 """
+
 import math
 from datetime import datetime
 
 from keri.app.habbing import Habery
 from keri.core import coring, serdering
 from keri.help import ogler
-from mongoengine import (
-    DateTimeField, DictField, Document, Q, StringField
-)
+from mongoengine import DateTimeField, DictField, Document, Q, StringField
 
 from castellan.core.services.custom.custom_errors import (
-    ConflictError, NotFoundError, ValidationError
+    ConflictError,
+    NotFoundError,
+    ValidationError,
 )
 from castellan.core.services.issued_credential_service import flatten_values
 
@@ -24,12 +25,13 @@ logger = ogler.getLogger()
 
 class ReceivedCredential(Document):
     """ACDC credential received by this account from an external issuer."""
+
     said = StringField(required=True, primary_key=True)
     sad = DictField(required=True)
-    issuer = StringField(required=True)       # external issuer AID
+    issuer = StringField(required=True)  # external issuer AID
     schema = DictField(required=True)
-    holder = StringField(required=True)       # account AID (us)
-    status = StringField()                    # "valid" | "revoked"
+    holder = StringField(required=True)  # account AID (us)
+    status = StringField()  # "valid" | "revoked"
     search_text = StringField(db_field="_search_text")
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
@@ -49,8 +51,16 @@ class ReceivedCredentialService:
     # Query
     # ------------------------------------------------------------------
 
-    def list_credentials(self, filter=None, issuer=None, holder=None,
-                          status=None, page=0, page_size=20, order=None):
+    def list_credentials(
+        self,
+        filter=None,
+        issuer=None,
+        holder=None,
+        status=None,
+        page=0,
+        page_size=20,
+        order=None,
+    ):
         """
         Return a page of ReceivedCredential documents matching the given filters.
 
@@ -78,11 +88,11 @@ class ReceivedCredentialService:
 
         if filter:
             qs = qs.filter(
-                Q(said__icontains=filter) |
-                Q(issuer__icontains=filter) |
-                Q(holder__icontains=filter) |
-                Q(status__icontains=filter) |
-                Q(search_text__icontains=filter)
+                Q(said__icontains=filter)
+                | Q(issuer__icontains=filter)
+                | Q(holder__icontains=filter)
+                | Q(status__icontains=filter)
+                | Q(search_text__icontains=filter)
             )
 
         if order:

@@ -4,11 +4,14 @@ castellan.app.api.received_credential module
 
 REST endpoint handlers for /received-credentials.
 """
+
 import falcon
 from keri.help import ogler
 
 from castellan.core.services.custom.custom_errors import (
-    ConflictError, NotFoundError, ValidationError
+    ConflictError,
+    NotFoundError,
+    ValidationError,
 )
 
 logger = ogler.getLogger()
