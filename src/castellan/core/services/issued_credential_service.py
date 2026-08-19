@@ -54,7 +54,9 @@ class IssuedCredential(Document):
 class IssuedCredentialService:
     """Service for managing credentials issued by this account."""
 
-    def __init__(self, hby: Habery = None, rgy=None, tvy=None, parser=None, schema_svc=None):
+    def __init__(
+        self, hby: Habery = None, rgy=None, tvy=None, parser=None, schema_svc=None
+    ):
         self.hby = hby
         self.rgy = rgy
         self.tvy = tvy
@@ -218,7 +220,9 @@ class IssuedCredentialService:
             try:
                 self.schema_svc.save_schema(doc["schema"])
             except Exception as e:
-                logger.warning(f"Could not save schema for credential {creder.said}: {e}")
+                logger.warning(
+                    f"Could not save schema for credential {creder.said}: {e}"
+                )
 
         return cred
 
