@@ -1,0 +1,2 @@
+[console_scripts]
+castellan = castellan.app.cli.castellan:main
