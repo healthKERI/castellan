@@ -57,6 +57,7 @@ from castellan.core.services import (
 )
 from castellan.core.services.account_service import AccountService
 from castellan.core.services.key_event_log_service import KeyEventLogService
+from castellan.core.services.schema_service import SchemaService
 
 logger = ogler.getLogger()
 CASTELLAN_CESR_PORT = 5925
@@ -182,8 +183,13 @@ def setup(
         parser=parser,
     )
     kel_svc = KeyEventLogService(hby=hby)
-    issued_svc = IssuedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
-    received_svc = ReceivedCredentialService(hby=hby, rgy=rgy, tvy=tvy, parser=parser)
+    schema_svc = SchemaService()
+    issued_svc = IssuedCredentialService(
+        hby=hby, rgy=rgy, tvy=tvy, parser=parser, schema_svc=schema_svc
+    )
+    received_svc = ReceivedCredentialService(
+        hby=hby, rgy=rgy, tvy=tvy, parser=parser, schema_svc=schema_svc
+    )
     tel_svc = TelEventService(hby=hby, tvy=tvy, parser=parser, hab=backer_hab)
     msg_svc = MessageService()
     identifier_svc = IdentifierService(

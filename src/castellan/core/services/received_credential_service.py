@@ -40,12 +40,13 @@ class ReceivedCredential(Document):
 class ReceivedCredentialService:
     """Service for managing credentials received by this account."""
 
-    def __init__(self, hby: Habery, rgy, tvy, parser):
+    def __init__(self, hby: Habery = None, rgy=None, tvy=None, parser=None, schema_svc=None):
         self.hby = hby
         self.rgy = rgy
         self.tvy = tvy
         self.parser = parser
-        self.reger = rgy.reger
+        self.reger = rgy.reger if rgy is not None else None
+        self.schema_svc = schema_svc
 
     # ------------------------------------------------------------------
     # Query
@@ -185,6 +186,13 @@ class ReceivedCredentialService:
         )
         cred.save()
         logger.info(f"Saved received credential: {creder.said}")
+
+        if self.schema_svc is not None and doc.get("schema"):
+            try:
+                self.schema_svc.save_schema(doc["schema"])
+            except Exception as e:
+                logger.warning(f"Could not save schema for credential {creder.said}: {e}")
+
         return cred
 
     def update_credential(self, said: str, update_data: dict):
@@ -216,7 +224,7 @@ class ReceivedCredentialService:
 
     def get_credential_stream(self, said: str) -> bytearray:
         """Return raw ACDC bytes for the given SAID (for stream=true requests)."""
-        if said not in self.tvy.tevers:
+        if self.tvy is not None and said not in self.tvy.tevers:
             raise NotFoundError(f"Credential not in tevers: {said}")
 
         cred = self.get_credential(said)

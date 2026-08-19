@@ -388,6 +388,26 @@ class TestServerService:
         mock_objects.assert_called_once_with(aid="nonexistent_aid")
         mock_query.delete.assert_called_once()
 
+    @patch("castellan.core.services.server_service.Server.objects")
+    def test_get_active_server_returns_most_recently_modified(self, mock_objects):
+        """Test that get_active_server returns the doc with the greatest lastModified"""
+        mock_server = Mock()
+        mock_objects.order_by.return_value.first.return_value = mock_server
+
+        result = ServerService.get_active_server()
+
+        assert result == mock_server
+        mock_objects.order_by.assert_called_once_with("-lastModified")
+
+    @patch("castellan.core.services.server_service.Server.objects")
+    def test_get_active_server_returns_none_when_no_servers(self, mock_objects):
+        """Test that get_active_server returns None when no Server docs exist"""
+        mock_objects.order_by.return_value.first.return_value = None
+
+        result = ServerService.get_active_server()
+
+        assert result is None
+
 
 class TestServerServiceIntegration:
     """Integration tests for ServerService with realistic scenarios"""

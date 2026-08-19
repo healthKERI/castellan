@@ -107,6 +107,17 @@ class ServerService:
             return None
 
     @staticmethod
+    def get_active_server():
+        """Most-recently-registered Server doc.
+
+        Interim rule until Server gains an explicit primary/active flag for
+        genuinely-concurrent multi-identity deployments — until then, the AID
+        the most recent `castellan up` registered is the one OOBI clients
+        resolve at /oobi/server.
+        """
+        return Server.objects.order_by("-lastModified").first()
+
+    @staticmethod
     def get_server_by_username(username):
         """Retrieves an Server by its username."""
         try:
