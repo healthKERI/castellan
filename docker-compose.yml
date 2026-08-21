@@ -45,25 +45,38 @@ services:
     networks:
       - castellan-net
 
+  # castellan (the credential server) and castellan-rack (the load balancer)
+  # run as two supervisord-managed processes in ONE container sharing ONE
+  # LMDB keystore -- matching nightingale's topology. rack's load balancer
+  # signs/decrypts ESSR traffic as the 'castellan' AID directly (see
+  # rack.app.routing.Router.hab/create_load_balancer), which requires
+  # castellan's private key material to be present in rack's own Habery, so
+  # they can't use separate keystores. Running them in separate containers
+  # against a shared keystore was tried and reliably fails on rack startup
+  # with `mdb_txn_begin: Resource temporarily unavailable` once castellan has
+  # been running for a while (its escrow-processing loop holds the LMDB
+  # writer lock often enough that rack's own ~90-call startup sequence can't
+  # get through) -- keeping both in one container, started together the way
+  # supervisord starts them, avoids that.
   castellan:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.combined
     container_name: castellan-server
-    command: ["docker/scripts/castellan.sh"]
-    # First-ever boot can lose a race opening the freshly-created LMDB keystore
-    # concurrently with castellan-rack (mdb_txn_begin: Resource temporarily
-    # unavailable). Self-heal instead of taking the whole stack down.
-    restart: on-failure:5
     environment:
       <<: *castellan-env
     ports:
       - "5925:5925"
+      - "5923:5923"
+      - "5885:5885"
     depends_on:
       castellan-init:
         condition: service_completed_successfully
     volumes:
       - keri_data:/usr/local/var/keri
+      # rack's Configer opens this in r+b mode even just to read it, so it
+      # can't be read-only -- see rack's --config-file castellan-loadbalancer.json.
+      - ./docker/conf:/app/rack/docker/conf
     networks:
       - castellan-net
     healthcheck:
@@ -86,30 +99,6 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-    networks:
-      - castellan-net
-
-  castellan-rack:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.rack
-    container_name: castellan-rack
-    command: ["docker/scripts/castellan-rack.sh"]
-    # See castellan service comment: same first-boot LMDB open race.
-    restart: on-failure:5
-    environment:
-      <<: *castellan-env
-    ports:
-      - "5923:5923"
-      - "5885:5885"
-    depends_on:
-      castellan-init:
-        condition: service_completed_successfully
-      castellan:
-        condition: service_healthy
-    volumes:
-      - keri_data:/usr/local/var/keri
-      - ./docker/conf:/app/rack/docker/conf:ro
     networks:
       - castellan-net
 
