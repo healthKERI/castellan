@@ -1,0 +1,123 @@
+x-castellan-env: &castellan-env
+  MONGODB_HOST: mongodb://mongodb:27017
+  CASTELLAN_DB_NAME: castellan
+  CASTELLAN_PORT: "5925"
+  CASTELLAN_OOBI_PORT: "5927"
+  CASTELLAN_RACK_PORT: "5923"
+  CASTELLAN_RACK_METRICS_PORT: "5885"
+
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: castellan-mongodb
+    environment:
+      MONGO_INITDB_DATABASE: castellan
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - castellan-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # One-shot: creates the 'castellan' and 'rack' KERI identifiers in the
+  # shared keystore before anything that depends on them starts. Safe to
+  # re-run -- `castellan up` skips creation if the identifier already exists.
+  castellan-init:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: castellan-init
+    command: ["docker/scripts/castellan-init.sh"]
+    environment:
+      <<: *castellan-env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - keri_data:/usr/local/var/keri
+    networks:
+      - castellan-net
+
+  castellan:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: castellan-server
+    command: ["docker/scripts/castellan.sh"]
+    # First-ever boot can lose a race opening the freshly-created LMDB keystore
+    # concurrently with castellan-rack (mdb_txn_begin: Resource temporarily
+    # unavailable). Self-heal instead of taking the whole stack down.
+    restart: on-failure:5
+    environment:
+      <<: *castellan-env
+    ports:
+      - "5925:5925"
+    depends_on:
+      castellan-init:
+        condition: service_completed_successfully
+    volumes:
+      - keri_data:/usr/local/var/keri
+    networks:
+      - castellan-net
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/5925'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  castellan-oobi:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: castellan-oobi
+    command: ["docker/scripts/castellan-oobi.sh"]
+    environment:
+      <<: *castellan-env
+    ports:
+      - "5927:5927"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - castellan-net
+
+  castellan-rack:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.rack
+    container_name: castellan-rack
+    command: ["docker/scripts/castellan-rack.sh"]
+    # See castellan service comment: same first-boot LMDB open race.
+    restart: on-failure:5
+    environment:
+      <<: *castellan-env
+    ports:
+      - "5923:5923"
+      - "5885:5885"
+    depends_on:
+      castellan-init:
+        condition: service_completed_successfully
+      castellan:
+        condition: service_healthy
+    volumes:
+      - keri_data:/usr/local/var/keri
+      - ./docker/conf:/app/rack/docker/conf:ro
+    networks:
+      - castellan-net
+
+networks:
+  castellan-net:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+  keri_data:

@@ -60,7 +60,7 @@ from castellan.core.services.key_event_log_service import KeyEventLogService
 from castellan.core.services.schema_service import SchemaService
 
 logger = ogler.getLogger()
-CASTELLAN_CESR_PORT = 5925
+CASTELLAN_CESR_PORT = 5926
 
 
 def _register_registrar_endpoint(hab, parser, host, port):

@@ -1,0 +1,13 @@
+{
+  "dt": "2022-01-20T12:57:59.823350+00:00",
+  "resolver": {
+    "module_name": "rack.app.modules.resolving",
+    "function_name": "get_resolver",
+    "params": {
+      "db_host": "mongodb://mongodb:27017",
+      "db_name": "castellan",
+      "db_user": "",
+      "db_pass": ""
+    }
+  }
+}

@@ -98,6 +98,10 @@ def create(args):
     key_service = KeyEventLogService(hby=hby)
     server_service = ServerService(parser=hab.psr, kvy=hab.kvy, kel_service=key_service)
 
+    if server_service.server_exists(hab.pre):
+        print(f"Server already registered for {hab.name} with AID {hab.pre}; skipping.")
+        return
+
     doc = dict(aid=hab.pre, ipaddress=args.ipaddress, port=int(args.port))
     kel = hab.replyToOobi(aid=hab.pre, role="controller")
 
