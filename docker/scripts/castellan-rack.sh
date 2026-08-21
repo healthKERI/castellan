@@ -1,12 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-# `rack start` only replays load balancer routes already persisted as TEL
-# credentials (see rack.app.routing.Router.setup, which reads rt.routes.values()
-# and never creates any) -- the route itself has to be issued once via
-# `rack route create`. `rack route create` has no "already exists" guard, and
-# issuing it twice would spin up two TcpSrvProc listeners on the same port, so
-# gate it behind a marker on the persistent keri_data volume.
 ROUTE_MARKER=/usr/local/var/keri/.castellan-loadbalancer-route-provisioned
 if [ ! -f "${ROUTE_MARKER}" ]; then
   echo "Provisioning castellan load balancer route..."
