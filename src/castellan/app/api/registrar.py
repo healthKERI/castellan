@@ -14,7 +14,6 @@ CESR-encoded KERI reply stream so clients can resolve castellan via keripy's
 standard OOBI resolution mechanism.
 """
 
-import base64
 
 import falcon
 from keri import kering
@@ -140,36 +139,6 @@ class RegistrarTelResourceEnd:
         }
 
 
-class RegistrarBackerEnd:
-    """
-    GET /registrar/backer
-
-    Returns the AID and base64-encoded KEL of castellan's non-transferable
-    backer identifier.  Whisper instances call this during setup to learn
-    which AID to include in registry ``baks`` lists and to resolve the
-    backer's key state locally.
-
-    Response (200):
-        {
-          "aid":     "<non-transferable backer prefix>",
-          "kel_b64": "<base64-encoded CESR KEL bytes>"
-        }
-    """
-
-    def __init__(self, hby, hab):
-        self.hby = hby
-        self.hab = hab  # non-transferable backer hab
-
-    def on_get(self, req, resp):
-        kel_bytes = b"".join(self.hby.db.clonePreIter(pre=self.hab.pre, fn=0))
-        resp.status = falcon.HTTP_200
-        resp.content_type = "application/json"
-        resp.media = {
-            "aid": self.hab.pre,
-            "kel_b64": base64.b64encode(kel_bytes).decode(),
-        }
-
-
 class RegistrarOobiEnd:
     """
     GET /oobi/{cid}/registrar
@@ -203,39 +172,6 @@ class RegistrarOobiEnd:
             raise falcon.HTTPNotFound(
                 title="Not Found",
                 description=f"No registrar OOBI registered for {cid}.",
-            )
-
-        resp.status = falcon.HTTP_200
-        resp.content_type = "application/json+cesr"
-        resp.data = bytes(msgs)
-
-
-class MailboxOobiEnd:
-    """
-    GET /oobi/{cid}/mailbox/{eid}
-
-    Serves castellan's mailbox OOBI as a CESR-encoded KERI reply stream so
-    that callers (e.g. mock-gleif) can resolve castellan's mailbox endpoint
-    without going through witnesses.
-    """
-
-    def __init__(self, hab):
-        self.hab = hab
-
-    def on_get(self, req, resp, cid, eid=None):
-        try:
-            msgs = self.hab.replyToOobi(aid=cid, role=kering.Roles.mailbox)
-        except Exception as e:
-            logger.error(f"Error building mailbox OOBI for {cid}: {e}")
-            raise falcon.HTTPInternalServerError(
-                title="Internal Server Error",
-                description=f"Could not build mailbox OOBI: {e}",
-            )
-
-        if not msgs:
-            raise falcon.HTTPNotFound(
-                title="Not Found",
-                description=f"No mailbox OOBI registered for {cid}.",
             )
 
         resp.status = falcon.HTTP_200

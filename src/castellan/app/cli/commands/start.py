@@ -113,7 +113,6 @@ def run_service(args, expire=0.0):
         alias=args.alias,
         bran=args.bran,
         base=args.base,
-        headDirPath=args.configDir,
         host=args.host,
         port=args.port,
         dbhost=args.dbhost,

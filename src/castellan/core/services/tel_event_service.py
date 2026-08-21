@@ -9,11 +9,17 @@ each TEL event it receives, returning its signature as a backer receipt.
 
 from datetime import datetime
 
-from keri.core import coring
-from keri.help import ogler
-from mongoengine import BinaryField, DateTimeField, Document, IntField, StringField
-
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
+from keri.core import serdering
+from keri.help import ogler
+from mongoengine import (
+    BinaryField,
+    DateTimeField,
+    Document,
+    IntField,
+    StringField,
+    DoesNotExist,
+)
 
 logger = ogler.getLogger()
 
@@ -65,7 +71,6 @@ class TelEvent(Document):
     sn = IntField(required=True, default=0)
     event_type = StringField(required=True)  # vcp | vrt | iss | bis | rev | brv
     raw = BinaryField(required=True)  # raw CESR-encoded event bytes
-    receipt = StringField()  # castellan's cigar signature (qb64)
     created_at = DateTimeField(default=datetime.now)
 
     meta = {
@@ -86,17 +91,16 @@ class TelEventService:
       5. Returns the document and the qb64-encoded receipt signature.
     """
 
-    def __init__(self, hby, tvy, parser, hab):
+    def __init__(self, hby, tvy, parser):
         self.hby = hby
         self.tvy = tvy
         self.parser = parser
-        self.hab = hab
 
     # ------------------------------------------------------------------
     # Write
     # ------------------------------------------------------------------
 
-    def receive_event(self, raw: bytes) -> tuple["TelEvent", str]:
+    def receive_event(self, raw: bytes) -> "TelEvent":
         """
         Parse, sign, and store a TEL event.
 
@@ -113,12 +117,12 @@ class TelEventService:
         """
         # Parse the event header to extract metadata
         try:
-            serder = coring.Serder(raw=raw)
+            serder = serdering.Serder(raw=raw)
         except Exception as e:
             raise ValueError(f"Cannot parse TEL event bytes: {e}")
 
         said = serder.said
-        event_type, regk, vcid, sn = _extract_fields(serder.ked)
+        event_type, regk, vcid, sn = _extract_fields(serder.sad)
 
         if not event_type:
             raise ValueError("TEL event missing 't' (ilk) field")
@@ -138,26 +142,12 @@ class TelEventService:
                 "Storing as pending."
             )
 
-        # Sign raw bytes with castellan hab (unindexed cigar — backer receipt format)
-        try:
-            cigars = self.hab.sign(ser=raw, indexed=False)
-            receipt_qb64 = cigars[0].qb64
-        except Exception as e:
-            logger.error(f"Failed to sign TEL event {said}: {e}")
-            receipt_qb64 = ""
-
         event = TelEvent(
-            said=said,
-            regk=regk,
-            vcid=vcid,
-            sn=sn,
-            event_type=event_type,
-            raw=raw,
-            receipt=receipt_qb64,
+            said=said, regk=regk, vcid=vcid, sn=sn, event_type=event_type, raw=raw
         )
         event.save()
         logger.info(f"Stored TEL event {event_type} said={said} regk={regk}")
-        return event, receipt_qb64
+        return event
 
     # ------------------------------------------------------------------
     # Read
@@ -171,7 +161,7 @@ class TelEventService:
         """Fetch a single TelEvent by its SAID. Raises NotFoundError if missing."""
         try:
             return TelEvent.objects.get(said=said)
-        except TelEvent.DoesNotExist:
+        except DoesNotExist:
             raise NotFoundError(f"TEL event not found: {said}")
 
     def get_events_for_credential(self, regk: str, vcid: str) -> list["TelEvent"]:

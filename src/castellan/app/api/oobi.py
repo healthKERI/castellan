@@ -18,10 +18,10 @@ compliant client resolves either resource correctly through hab.resolve().
 """
 
 import falcon
-from keri.help import ogler
-
 from castellan.core.services.custom.custom_errors import NotFoundError
-from castellan.core.services.key_event_log_service import Aid, KeyEventLogService
+from castellan.core.services.key_event_log_service import KeyEventLogService
+from keri.help import ogler
+from mongoengine import DoesNotExist
 
 logger = ogler.getLogger()
 
@@ -49,7 +49,7 @@ class OobiDispatchEnd:
     def on_get(self, req, resp, said):
         try:
             KeyEventLogService.get_aid(said)
-        except Aid.DoesNotExist:
+        except DoesNotExist:
             pass
         else:
             ims = self.kel_svc.get_full_stream(said)

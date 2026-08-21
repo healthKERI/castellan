@@ -10,7 +10,14 @@ so they can be resolved independently of any credential that embeds them
 from datetime import datetime
 
 from keri.core.scheming import Schemer
-from mongoengine import BinaryField, DateTimeField, DynamicField, Document, StringField
+from mongoengine import (
+    BinaryField,
+    DateTimeField,
+    DynamicField,
+    Document,
+    StringField,
+    DoesNotExist,
+)
 
 from castellan.core.services.custom.custom_errors import NotFoundError
 
@@ -49,5 +56,52 @@ class SchemaService:
         """Fetch a single Schema by SAID. Raises NotFoundError if missing."""
         try:
             return Schema.objects.get(said=said)
-        except Schema.DoesNotExist:
+        except DoesNotExist:
             raise NotFoundError(f"Schema not found: {said}")
+
+    def list_schemas(self, page=0, page_size=20, order=None):
+        """
+        List all schemas with pagination.
+
+        Args:
+            page: Zero-indexed page number (default 0)
+            page_size: Results per page (default 20)
+            order: Sort field(s), e.g., ["-created_at", "said"] (default ["-created_at"])
+
+        Returns:
+            tuple: (schemas, total_count, num_pages)
+        """
+        import math
+
+        qs = Schema.objects()
+
+        # Ordering
+        if order:
+            if isinstance(order, str):
+                order = [order]
+            qs = qs.order_by(*order)
+        else:
+            qs = qs.order_by("-created_at")
+
+        # Pagination
+        total = qs.count()
+        num_pages = max(1, math.ceil(total / page_size)) if total > 0 else 1
+        schemas = list(qs.skip(page * page_size).limit(page_size))
+
+        return schemas, total, num_pages
+
+    def delete_schema(self, said: str):
+        """
+        Delete a schema by SAID.
+
+        Args:
+            said: The schema SAID to delete
+
+        Raises:
+            NotFoundError: If schema doesn't exist
+        """
+        schema = self.get_schema(said)  # Ensures exists, raises NotFoundError
+        try:
+            schema.delete()
+        except Exception as e:
+            raise RuntimeError(f"Error deleting schema: {e}")

@@ -77,7 +77,7 @@ def create(args):
                 "Unable to resolve provided OOBI. Please check your configuration"
             )
 
-        db_host = args.dbhost if args.dbhost else "mongodb://localhost:27017"
+        db_host = args.dbhost if args.dbhost else "mongodb://mongodb:27017"
         db_name = args.dbname if args.dbname else "castellan"
         db_user = args.dbuser if args.dbuser else None
         db_pass = args.dbpass if args.dbpass else None

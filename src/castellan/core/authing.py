@@ -75,11 +75,6 @@ class SignatureValidationComponent:
         if (signer := self.authn.signer(req)) is not None:
             if (account := self.accountSvc.get_account(signer)) is not None:
                 req.context.account = account
-
-                rep.status = falcon.HTTP_412
-                rep.complete = (
-                    True  # This short-circuits Falcon, skipping all further processing
-                )
                 return
 
         rep.complete = (
