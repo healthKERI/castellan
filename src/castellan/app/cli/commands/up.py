@@ -63,10 +63,12 @@ def up(args):
         )
 
         if server_service.server_exists(hab.pre):
-        print(f"Server already registered for {hab.name} with AID {hab.pre}; skipping.")
-        return
+            print(
+                f"Server already registered for {hab.name} with AID {hab.pre}; skipping."
+            )
+            return
 
-    doc = dict(aid=hab.pre, ipaddress=ipaddress, port=int(port))
+        doc = dict(aid=hab.pre, ipaddress=ipaddress, port=int(port))
         kel = hab.replyToOobi(aid=hab.pre, role="controller")
 
         server_service.create_server(doc, kel)

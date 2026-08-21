@@ -14,7 +14,6 @@ CESR-encoded KERI reply stream so clients can resolve castellan via keripy's
 standard OOBI resolution mechanism.
 """
 
-
 import falcon
 from keri import kering
 from keri.help import ogler
