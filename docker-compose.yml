@@ -48,22 +48,19 @@ services:
   castellan:
     build:
       context: .
-      dockerfile: docker/Dockerfile.combined
+      dockerfile: docker/Dockerfile
     container_name: castellan-server
+    command: ["docker/scripts/castellan.sh"]
     environment:
       <<: *castellan-env
+    restart: unless-stopped
     ports:
       - "5925:5925"
-      - "5923:5923"
-      - "5885:5885"
     depends_on:
       castellan-init:
         condition: service_completed_successfully
     volumes:
       - keri_data:/usr/local/var/keri
-      # rack's Configer opens this in r+b mode even just to read it, so it
-      # can't be read-only -- see rack's --config-file castellan-loadbalancer.json.
-      - ./docker/conf:/app/rack/docker/conf
     networks:
       - castellan-net
     healthcheck:
@@ -72,6 +69,39 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  # Shares castellan's PID namespace: rack signs/decrypts ESSR traffic as the
+  # castellan AID directly out of the same LMDB-backed keystore (see
+  # docker/README.md), and running the two as separate containers previously
+  # caused `mdb_txn_begin: Resource temporarily unavailable` -- LMDB's reader
+  # table records PIDs to detect dead readers, which breaks across separate
+  # PID namespaces. Joining castellan's namespace tests whether that's the
+  # actual cause.
+  castellan-rack:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.rack
+    container_name: castellan-rack
+    command: ["docker/scripts/castellan-rack.sh"]
+    environment:
+      <<: *castellan-env
+    restart: unless-stopped
+    pid: "service:castellan"
+    ports:
+      - "5923:5923"
+      - "5885:5885"
+    depends_on:
+      castellan-init:
+        condition: service_completed_successfully
+      castellan:
+        condition: service_started
+    volumes:
+      - keri_data:/usr/local/var/keri
+      # rack's Configer opens this in r+b mode even just to read it, so it
+      # can't be read-only -- see rack's --config-file castellan-loadbalancer.json.
+      - ./docker/conf:/app/rack/docker/conf
+    networks:
+      - castellan-net
 
   castellan-oobi:
     build:

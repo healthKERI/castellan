@@ -21,7 +21,7 @@ WORKDIR /app/castellan
 COPY pyproject.toml ./
 COPY src ./src
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir . supervisor
+    pip install --no-cache-dir .
 
 # rack isn't published anywhere castellan can pip-install from, so we install
 # a wheel checked into rack/ in this repo instead of a package index/git URL.
@@ -31,8 +31,6 @@ RUN pip install --no-cache-dir ./rack-1.2.0-py3-none-any.whl
 COPY docker/scripts/ /app/castellan/docker/scripts/
 RUN chmod +x /app/castellan/docker/scripts/*.sh
 
-COPY docker/conf/supervisord.conf /app/castellan/docker/conf/supervisord.conf
-
 RUN mkdir -p /usr/local/var/keri/cf/main
 
-CMD ["supervisord", "-c", "/app/castellan/docker/conf/supervisord.conf"]
+ENTRYPOINT ["/bin/bash"]
