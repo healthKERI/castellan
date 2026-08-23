@@ -42,16 +42,15 @@ class OobiDispatchEnd:
     sits next to /oobi/{said}/credential.
     """
 
-    def __init__(self, kel_svc, schema_svc):
+    def __init__(self, kel_svc, schema_svc, issued_svc, received_svc):
         self.kel_svc = kel_svc
         self.schema_svc = schema_svc
+        self.issued_svc = issued_svc
+        self.received_svc = received_svc
 
-    def on_get(self, req, resp, said):
+    def on_get(self, _, resp, said):
         try:
             KeyEventLogService.get_aid(said)
-        except DoesNotExist:
-            pass
-        else:
             ims = self.kel_svc.get_full_stream(said)
             resp.status = falcon.HTTP_200
             resp.content_type = "application/json+cesr"
@@ -59,48 +58,41 @@ class OobiDispatchEnd:
             resp.data = bytes(ims)
             return
 
+        except DoesNotExist:
+            pass
+
+        try:
+            ims = self.issued_svc.get_credential_stream(said)
+            resp.status = falcon.HTTP_200
+            resp.content_type = "application/json+cesr"
+            resp.data = bytes(ims)
+            return
+
+        except NotFoundError:
+            pass
+
+        try:
+            ims = self.received_svc.get_credential_stream(said)
+            resp.status = falcon.HTTP_200
+            resp.content_type = "application/json+cesr"
+            resp.data = bytes(ims)
+            return
+
+        except NotFoundError:
+            pass
+
         try:
             schema = self.schema_svc.get_schema(said)
+            resp.status = falcon.HTTP_200
+            resp.content_type = "application/schema+json"
+            resp.data = bytes(schema.raw)
+            return
+
         except NotFoundError:
             raise falcon.HTTPNotFound(
                 title="Not Found",
-                description=f"No AID or schema found for {said}.",
+                description=f"No AID, credential or schema SAID found for {said}.",
             )
-
-        resp.status = falcon.HTTP_200
-        resp.content_type = "application/schema+json"
-        resp.data = bytes(schema.raw)
-
-
-class CredentialOobiEnd:
-    """
-    GET /oobi/{said}/credential
-
-    Resolves the CESR stream for a credential (checking issued, then
-    received). ACDCs aren't part of keripy's generic OOBI mechanism, so this
-    lives at its own path under /oobi/, mirroring castellan's
-    /oobi/{cid}/registrar "role-suffixed" convention.
-    """
-
-    def __init__(self, issued_svc, received_svc):
-        self.issued_svc = issued_svc
-        self.received_svc = received_svc
-
-    def on_get(self, req, resp, said):
-        try:
-            ims = self.issued_svc.get_credential_stream(said)
-        except NotFoundError:
-            try:
-                ims = self.received_svc.get_credential_stream(said)
-            except NotFoundError:
-                raise falcon.HTTPNotFound(
-                    title="Not Found",
-                    description=f"No credential found for {said}.",
-                )
-
-        resp.status = falcon.HTTP_200
-        resp.content_type = "application/json+cesr"
-        resp.data = bytes(ims)
 
 
 class ServerOobiEnd:
@@ -116,7 +108,7 @@ class ServerOobiEnd:
         self.server_svc = server_svc
         self.kel_svc = kel_svc
 
-    def on_get(self, req, resp):
+    def on_get(self, _, resp):
         server = self.server_svc.get_active_server()
         if server is None:
             raise falcon.HTTPNotFound(

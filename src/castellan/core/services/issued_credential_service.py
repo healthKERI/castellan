@@ -7,17 +7,28 @@ Service and MongoDB document model for credentials issued by this account.
 
 import math
 from datetime import datetime
-
-from keri.app.habbing import Habery
-from keri.core import coring, serdering
-from keri.help import ogler
-from mongoengine import BooleanField, DateTimeField, DictField, Document, Q, StringField
+from typing import Optional
 
 from castellan.core.services.custom.custom_errors import (
     ConflictError,
     NotFoundError,
     ValidationError,
 )
+from keri.app.habbing import Habery
+from keri.core import coring, serdering
+from keri.help import ogler
+from mongoengine import (
+    BooleanField,
+    DateTimeField,
+    DictField,
+    Document,
+    Q,
+    StringField,
+    ListField,
+    DoesNotExist,
+    EmbeddedDocumentField,
+)
+from castellan.core.services.dynamic_fields import DynamicField, create_dynamic_field
 
 logger = ogler.getLogger()
 
@@ -36,6 +47,15 @@ def flatten_values(obj) -> str:
     return " ".join(p for p in parts if p)
 
 
+def flatten_dynamic_fields(dynamic_fields) -> str:
+    """Extract searchable text from dynamic fields list."""
+    parts = []
+    for field in dynamic_fields:
+        if hasattr(field, 'get_value_for_search'):
+            parts.append(field.get_value_for_search())
+    return " ".join(parts)
+
+
 class IssuedCredential(Document):
     """ACDC credential issued by this account to a recipient."""
 
@@ -46,6 +66,8 @@ class IssuedCredential(Document):
     recipient = StringField()  # holder AID
     status = StringField()  # "issued" | "revoked"
     published = BooleanField(default=False)
+    notes = StringField(required=False)
+    dynamic_fields = ListField(EmbeddedDocumentField(DynamicField), default=list)
     search_text = StringField(db_field="_search_text")  # flattened sad values
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
@@ -55,7 +77,7 @@ class IssuedCredentialService:
     """Service for managing credentials issued by this account."""
 
     def __init__(
-        self, hby: Habery = None, rgy=None, tvy=None, parser=None, schema_svc=None
+        self, hby: Optional[Habery] = None, rgy=None, tvy=None, parser=None, schema_svc=None
     ):
         self.hby = hby
         self.rgy = rgy
@@ -127,6 +149,11 @@ class IssuedCredentialService:
         else:
             qs = qs.order_by("-created_at")
 
+        logger.info("FUCK YOU YOU FUCKING CUNT")
+        logger.info(list(qs))
+        logger.info("FUCK YOU YOU FUCKING TWAT")
+
+
         total = qs.count()
         num_pages = max(1, math.ceil(total / page_size)) if total > 0 else 1
         credentials = list(qs.skip(page * page_size).limit(page_size))
@@ -137,7 +164,7 @@ class IssuedCredentialService:
         """Fetch a single IssuedCredential by SAID. Raises NotFoundError if missing."""
         try:
             cred = IssuedCredential.objects.get(said=said)
-        except IssuedCredential.DoesNotExist:
+        except DoesNotExist:
             raise NotFoundError(f"Issued credential not found: {said}")
         except Exception as e:
             raise RuntimeError(f"Error querying issued credential: {e}")
@@ -201,7 +228,19 @@ class IssuedCredentialService:
         except Exception:
             pass
 
-        search_text = flatten_values(creder.sad)
+        search_parts = [flatten_values(creder.attrib)]
+
+        # Handle dynamic_fields from doc
+        dynamic_fields_data = doc.get("dynamic_fields", [])
+        dynamic_fields = []
+        if dynamic_fields_data:
+            try:
+                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                search_parts.append(flatten_dynamic_fields(dynamic_fields))
+            except ValueError as e:
+                logger.warning(f"Invalid dynamic field data: {e}")
+
+        search_text = " ".join(search_parts)
 
         cred = IssuedCredential(
             said=creder.said,
@@ -211,6 +250,7 @@ class IssuedCredentialService:
             recipient=creder.issuee or doc.get("recipient"),
             status=status_text,
             published=doc.get("publish", False),
+            dynamic_fields=dynamic_fields,
             search_text=search_text,
         )
         cred.save()
@@ -230,17 +270,35 @@ class IssuedCredentialService:
         """
         Update allowed fields on an IssuedCredential.
 
-        Allowed fields: status, published, recipient.
+        Allowed fields: status, published, recipient, notes, dynamic_fields.
         """
         cred = self.get_credential(said)
         try:
-            for field in ("status", "published", "recipient"):
-                if field in update_data:
-                    setattr(cred, field, update_data[field])
+            # Handle dynamic_fields updates
+            if "dynamic_fields" in update_data:
+                dynamic_fields_data = update_data["dynamic_fields"]
+                if not isinstance(dynamic_fields_data, list):
+                    raise ValidationError("dynamic_fields must be a list")
+
+                # Validate and create dynamic field objects
+                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                cred.dynamic_fields = dynamic_fields
+
+                # Rebuild search_text
+                search_parts = [flatten_values(cred.sad)]
+                if dynamic_fields:
+                    search_parts.append(flatten_dynamic_fields(dynamic_fields))
+                cred.search_text = " ".join(search_parts)
+
             cred.updated_at = datetime.now()
             cred.save()
+        except ValidationError:
+            raise
+        except ValueError as e:
+            raise ValidationError(f"Invalid dynamic field data: {e}")
         except Exception as e:
             raise RuntimeError(f"Error updating issued credential: {e}")
+
         logger.info(f"Updated issued credential: {said}")
         return cred
 
@@ -261,6 +319,6 @@ class IssuedCredentialService:
 
         cred = self.get_credential(said)
         ims = bytearray()
-        serder = serdering.SerderKERI(sad=cred.sad)
+        serder = serdering.SerderACDC(sad=cred.sad)
         ims.extend(serder.raw)
         return ims

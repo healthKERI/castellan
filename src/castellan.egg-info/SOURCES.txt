@@ -33,6 +33,7 @@ src/castellan/core/basing.py
 src/castellan/core/haberying.py
 src/castellan/core/services/__init__.py
 src/castellan/core/services/account_service.py
+src/castellan/core/services/dynamic_fields.py
 src/castellan/core/services/identifier_service.py
 src/castellan/core/services/issued_credential_service.py
 src/castellan/core/services/key_event_log_service.py

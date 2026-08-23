@@ -233,6 +233,6 @@ class ReceivedCredentialService:
 
         cred = self.get_credential(said)
         ims = bytearray()
-        serder = serdering.SerderKERI(sad=cred.sad)
+        serder = serdering.SerderACDC(sad=cred.sad)
         ims.extend(serder.raw)
         return ims

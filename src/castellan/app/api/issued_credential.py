@@ -26,6 +26,8 @@ def _serialize(cred):
         "recipient": cred.recipient,
         "status": cred.status,
         "published": cred.published,
+        "notes": cred.notes,
+        "dynamic_fields": [field.to_dict() for field in cred.dynamic_fields],
         "created_at": cred.created_at.isoformat() if cred.created_at else None,
         "updated_at": cred.updated_at.isoformat() if cred.updated_at else None,
     }
@@ -90,7 +92,12 @@ class IssuedCredentialCollectionEnd:
         """Upload an issued credential.
 
         Expects multipart/form-data with:
-            doc  - application/json: { said, issuer, recipient, schema, publish }
+            doc  - application/json: {
+                     said, issuer, recipient, schema, publish,
+                     dynamic_fields (optional): [
+                       {type: "phone|address|date|url|email|text", label: str, value: any}
+                     ]
+                   }
             acdc - raw ACDC bytes
         """
         try:
@@ -145,6 +152,8 @@ class IssuedCredentialCollectionEnd:
         except ValidationError as e:
             raise falcon.HTTPBadRequest(title="Invalid Request", description=str(e))
         except Exception as e:
+            import traceback
+            logger.exception(traceback.format_exc())
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
                 description=f"An unexpected error occurred: {e}",
@@ -185,10 +194,16 @@ class IssuedCredentialResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_put(self, req, resp, said):
+    def on_patch(self, req, resp, said):
         """Update an issued credential.
 
-        Request body (JSON): { status?, published?, recipient? }
+        Request body (JSON): {
+          status?,
+          published?,
+          recipient?,
+          notes?,
+          dynamic_fields?: [{type, label, value}]
+        }
         """
         try:
             body = req.media
@@ -198,6 +213,7 @@ class IssuedCredentialResourceEnd:
                     description="Request body is required.",
                 )
 
+            logger.info(f"Updating issued credential with said: {said} {body}")
             credential = self.service.update_credential(said, body)
 
             resp.status = falcon.HTTP_200

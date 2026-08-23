@@ -13,7 +13,7 @@ from hio.core import http
 from keri.app import indirecting
 from keri.help import ogler
 
-from castellan.app.api.oobi import CredentialOobiEnd, OobiDispatchEnd, ServerOobiEnd
+from castellan.app.api.oobi import OobiDispatchEnd, ServerOobiEnd
 from castellan.core.basing import databaseInit
 from castellan.core.services.issued_credential_service import IssuedCredentialService
 from castellan.core.services.key_event_log_service import KeyEventLogService
@@ -66,10 +66,7 @@ def setup(
     app = falcon.App(
         middleware=falcon.CORSMiddleware(allow_origins="*", allow_credentials="*")
     )
-    app.add_route("/oobi/{said}", OobiDispatchEnd(kel_svc, schema_svc))
-    app.add_route(
-        "/oobi/{said}/credential", CredentialOobiEnd(issued_svc, received_svc)
-    )
+    app.add_route("/oobi/{said}", OobiDispatchEnd(kel_svc, schema_svc, issued_svc, received_svc))
     app.add_route("/oobi/server", ServerOobiEnd(server_svc, kel_svc))
 
     server = indirecting.createHttpServer(host=host, port=port, app=app)
