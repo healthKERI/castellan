@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "castellan.fullname" . }}-rack-metrics
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan
+  {{- with .Values.rack.metricsService.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  # Prometheus scrape target -- kept off any public-facing LB.
+  type: {{ .Values.rack.metricsService.type }}
+  selector:
+    {{- include "castellan.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan
+  ports:
+    - name: metrics
+      port: {{ .Values.ports.rackMetrics }}
+      targetPort: {{ .Values.ports.rackMetrics }}

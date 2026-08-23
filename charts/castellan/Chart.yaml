@@ -1,0 +1,6 @@
+apiVersion: v2
+name: castellan
+description: Castellan KERI credential server, rack load balancer, and OOBI service
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

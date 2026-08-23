@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "castellan.fullname" . }}
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan
+spec:
+  # Internal/debug only -- the real data path is castellan-rack talking to
+  # castellan over loopback inside the shared pod network namespace.
+  type: ClusterIP
+  selector:
+    {{- include "castellan.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan
+  ports:
+    - name: http
+      port: {{ .Values.ports.castellan }}
+      targetPort: {{ .Values.ports.castellan }}

@@ -25,17 +25,28 @@ if ! kli aid --name castellan --alias rack >/dev/null 2>&1; then
   kli incept --name castellan --alias rack --transferable --icount 1 --isith "1" --ncount 1 --nsith "1" --toad 0
   RACK_AID=$(kli aid --name castellan --alias rack)
   kli ends add --name castellan --alias rack --role controller --eid "${RACK_AID}"
-  kli location add --name castellan --alias rack --url "tcp://castellan-rack:${CASTELLAN_RACK_PORT}" --eid "${RACK_AID}"
+  kli location add --name castellan --alias rack --url "tcp://${CASTELLAN_RACK_LOCATION_HOST:-castellan-rack}:${CASTELLAN_RACK_PORT}" --eid "${RACK_AID}"
 else
   echo "'rack' AID already exists; skipping."
 fi
 
 echo "Registering 'rack' as the OOBI-resolvable server..."
-castellan up \
-  --name castellan \
-  --alias rack \
-  --dbhost "${MONGODB_HOST}" \
+up_args=(
+  --name castellan
+  --alias rack
+  --dbhost "${MONGODB_HOST}"
   --dbname "${CASTELLAN_DB_NAME}"
+)
+
+if [ -n "${CASTELLAN_DB_USER:-}" ]; then
+  up_args+=(--dbuser "${CASTELLAN_DB_USER}")
+fi
+
+if [ -n "${CASTELLAN_DB_PASS:-}" ]; then
+  up_args+=(--dbpass "${CASTELLAN_DB_PASS}")
+fi
+
+castellan up "${up_args[@]}"
 
 REGISTRY_MARKER=/usr/local/var/keri/.castellan-rack-registry-provisioned
 if [ ! -f "${REGISTRY_MARKER}" ]; then

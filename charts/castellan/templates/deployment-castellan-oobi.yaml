@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "castellan.fullname" . }}-oobi
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan-oobi
+spec:
+  replicas: {{ .Values.castellanOobi.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "castellan.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: castellan-oobi
+  template:
+    metadata:
+      labels:
+        {{- include "castellan.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: castellan-oobi
+    spec:
+      serviceAccountName: {{ include "castellan.serviceAccountName" . }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: castellan-oobi
+          image: "{{ .Values.image.castellan.repository }}:{{ .Values.image.castellan.tag }}"
+          imagePullPolicy: {{ .Values.image.castellan.pullPolicy }}
+          command: ["docker/scripts/castellan-oobi.sh"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "castellan.fullname" . }}-env
+          env:
+            {{- include "castellan.mongoEnv" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.oobi }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.oobi }}
+            initialDelaySeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.oobi }}
+            initialDelaySeconds: 20
+          {{- with .Values.castellanOobi.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

@@ -1,0 +1,25 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: castellan-test
+  region: us-east-1
+  version: "1.34"
+
+iam:
+  withOIDC: true
+
+addons:
+  - name: vpc-cni
+    resolveConflicts: overwrite
+  - name: coredns
+  - name: kube-proxy
+  - name: metrics-server
+
+managedNodeGroups:
+  - name: ng-1
+    instanceType: c7i-flex.large
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    volumeSize: 20

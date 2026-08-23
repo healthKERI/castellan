@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     build-essential \
     curl \
+    gettext-base \
     git \
     libsodium-dev \
     libssl-dev \

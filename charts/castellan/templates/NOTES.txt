@@ -1,0 +1,21 @@
+Castellan has been deployed.
+
+Components:
+  - {{ include "castellan.fullname" . }}         Deployment (castellan + castellan-rack, 1 replica)
+  - {{ include "castellan.fullname" . }}-oobi    Deployment ({{ .Values.castellanOobi.replicaCount }} replicas)
+  - {{ include "castellan.fullname" . }}-init    pre-install/pre-upgrade hook Job
+
+Check the init Job completed successfully:
+  kubectl get jobs -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Port-forward castellan's OOBI service to confirm the rack AID resolves with the correct external location:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "castellan.fullname" . }}-oobi {{ .Values.ports.oobi }}:{{ .Values.ports.oobi }}
+  curl http://127.0.0.1:{{ .Values.ports.oobi }}/oobi/server
+
+{{- if eq (.Values.rack.service.type | toString) "ClusterIP" }}
+
+NOTE: rack's inbound service ({{ include "castellan.fullname" . }}-rack) is ClusterIP, for
+internal testing only. Port {{ .Values.ports.rack }} is raw TCP (not HTTP), so exposing it
+externally requires an AWS NLB (Layer 4), not an ALB/HTTP ingress -- set rack.service.type and
+rack.service.annotations accordingly when ready.
+{{- end }}

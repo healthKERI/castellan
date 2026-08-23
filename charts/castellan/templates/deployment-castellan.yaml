@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "castellan.fullname" . }}
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan
+spec:
+  # Hardcoded: castellan and castellan-rack share one LMDB-backed keystore on
+  # a static RWO PVC, so this can never scale horizontally.
+  replicas: 1
+  strategy:
+    # A RollingUpdate overlap would run two pods against the same RWO PVC and
+    # reproduce the LMDB writer-lock contention this topology works around.
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "castellan.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: castellan
+  template:
+    metadata:
+      labels:
+        {{- include "castellan.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: castellan
+    spec:
+      serviceAccountName: {{ include "castellan.serviceAccountName" . }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      # Kubernetes-native equivalent of docker-compose's `pid: "service:castellan"`:
+      # rack signs/decrypts ESSR traffic as the castellan AID directly out of
+      # castellan's own LMDB keystore, and LMDB's reader table tracks readers
+      # by PID -- that only works when both processes share one PID namespace.
+      shareProcessNamespace: true
+      initContainers:
+        - name: rack-lb-config-render
+          image: "{{ .Values.image.castellan.repository }}:{{ .Values.image.castellan.tag }}"
+          imagePullPolicy: {{ .Values.image.castellan.pullPolicy }}
+          command:
+            - /bin/bash
+            - -c
+            - envsubst < /templates/castellan-loadbalancer.json.tmpl > /rack-lb-config/castellan-loadbalancer.json
+          env:
+            - name: CASTELLAN_LB_DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "mongodb.connectionString.secretName is required" .Values.mongodb.connectionString.secretName }}
+                  key: {{ .Values.mongodb.connectionString.secretKey }}
+            - name: CASTELLAN_LB_DB_NAME
+              value: {{ .Values.mongodb.databaseName | quote }}
+            {{- if .Values.mongodb.credentials.secretName }}
+            - name: CASTELLAN_LB_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.credentials.secretName }}
+                  key: {{ .Values.mongodb.credentials.usernameKey }}
+            - name: CASTELLAN_LB_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.credentials.secretName }}
+                  key: {{ .Values.mongodb.credentials.passwordKey }}
+            {{- end }}
+          volumeMounts:
+            - name: rack-lb-template
+              mountPath: /templates
+              readOnly: true
+            - name: rack-lb-config
+              mountPath: /rack-lb-config
+      containers:
+        - name: castellan
+          image: "{{ .Values.image.castellan.repository }}:{{ .Values.image.castellan.tag }}"
+          imagePullPolicy: {{ .Values.image.castellan.pullPolicy }}
+          command: ["docker/scripts/castellan.sh"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "castellan.fullname" . }}-env
+          env:
+            {{- include "castellan.mongoEnv" . | nindent 12 }}
+            {{- with .Values.castellan.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.castellan }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.castellan }}
+            initialDelaySeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.castellan }}
+            initialDelaySeconds: 20
+          volumeMounts:
+            - name: keri-data
+              mountPath: /usr/local/var/keri
+          {{- with .Values.castellan.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        - name: castellan-rack
+          image: "{{ .Values.image.rack.repository }}:{{ .Values.image.rack.tag }}"
+          imagePullPolicy: {{ .Values.image.rack.pullPolicy }}
+          command: ["docker/scripts/castellan-rack.sh"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "castellan.fullname" . }}-env
+          env:
+            {{- include "castellan.mongoEnv" . | nindent 12 }}
+            - name: CASTELLAN_HTTP_HOST
+              value: {{ .Values.rack.httpHost | quote }}
+          ports:
+            - name: tcp
+              containerPort: {{ .Values.ports.rack }}
+            - name: metrics
+              containerPort: {{ .Values.ports.rackMetrics }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.rack }}
+            initialDelaySeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.rack }}
+            initialDelaySeconds: 20
+          volumeMounts:
+            - name: keri-data
+              mountPath: /usr/local/var/keri
+            - name: rack-lb-config
+              mountPath: /app/rack/docker/conf
+          {{- with .Values.rack.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: keri-data
+          persistentVolumeClaim:
+            claimName: {{ include "castellan.fullname" . }}-keri-data
+        - name: rack-lb-template
+          configMap:
+            name: {{ include "castellan.fullname" . }}-rack-lb-template
+        - name: rack-lb-config
+          # rack's Configer opens this file in r+b mode even to read it, so
+          # the mount can't be read-only -- see docker/README.md.
+          emptyDir: {}

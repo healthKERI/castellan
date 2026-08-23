@@ -1,0 +1,81 @@
+image:
+  castellan:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  rack:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+ports:
+  castellan: 5925
+  rack: 5923
+  rackMetrics: 5885
+  oobi: 5927
+
+mongodb:
+  databaseName: castellan
+  connectionString:
+    # REQUIRED: name of a pre-existing Secret owning the full Mongo connection
+    # string, e.g. mongodb://host:27017 -> MONGODB_HOST
+    secretName: ""
+    secretKey: "connection-string"
+  credentials:
+    # OPTIONAL: name of a pre-existing Secret holding both keys below. Leave
+    # secretName empty to connect without auth.
+    secretName: ""
+    usernameKey: "username"
+    passwordKey: "password"
+
+castellan:
+  resources: {}
+  extraEnv: []
+
+rack:
+  # Same-pod network namespace: castellan-rack reaches castellan over
+  # loopback, not the compose-era DNS name "castellan".
+  httpHost: "127.0.0.1"
+  externalLocation:
+    # REQUIRED: real, externally-resolvable host for the rack AID's TCP
+    # location, resolved by external KERI parties via GET /oobi/server.
+    host: ""
+    # Defaults to ports.rack when empty.
+    port: ""
+  resources: {}
+  service:
+    type: ClusterIP
+    annotations: {}
+  metricsService:
+    type: ClusterIP
+    annotations: {}
+
+castellanOobi:
+  replicaCount: 2
+  resources: {}
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    annotations: {}
+    tls: []
+
+persistence:
+  storageClassName: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  # helm.sh/resource-policy: keep, so `helm uninstall` doesn't destroy the
+  # shared LMDB keystore.
+  keep: true
+
+castellanInit:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+
+serviceAccount:
+  create: false
+  name: ""

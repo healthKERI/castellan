@@ -8,6 +8,11 @@ Credential exchange server intended for use with the locksmith castellan-plugin.
 server, the OOBI service, and the rack load balancer. See `docker/README.md` for details
 on the services, ports, and volumes.
 
+### Kubernetes
+`charts/castellan` is a Helm chart for deploying to Kubernetes (MongoDB hosted externally).
+See `charts/castellan/values.yaml` for configuration and `helm template charts/castellan` to
+render manifests.
+
 ### Local development
 Create a virtualenv and install castellan in editable mode:
 

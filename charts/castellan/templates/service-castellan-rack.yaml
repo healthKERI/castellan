@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "castellan.fullname" . }}-rack
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan
+  {{- with .Values.rack.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  # Port 5923 is raw TCP (rack signs/decrypts ESSR traffic directly, not
+  # HTTP) -- if this becomes a LoadBalancer, it needs an AWS NLB (Layer 4),
+  # not an ALB/HTTP ingress.
+  type: {{ .Values.rack.service.type }}
+  selector:
+    {{- include "castellan.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan
+  ports:
+    - name: tcp
+      port: {{ .Values.ports.rack }}
+      targetPort: {{ .Values.ports.rack }}

@@ -1,0 +1,34 @@
+{{- if .Values.castellanOobi.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "castellan.fullname" . }}-oobi
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan-oobi
+  {{- with .Values.castellanOobi.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.castellanOobi.ingress.className }}
+  ingressClassName: {{ .Values.castellanOobi.ingress.className }}
+  {{- end }}
+  {{- with .Values.castellanOobi.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - {{- if .Values.castellanOobi.ingress.host }}
+      host: {{ .Values.castellanOobi.ingress.host }}
+      {{- end }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "castellan.fullname" . }}-oobi
+                port:
+                  number: {{ .Values.ports.oobi }}
+{{- end }}

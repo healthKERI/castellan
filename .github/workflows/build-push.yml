@@ -1,0 +1,71 @@
+name: Build and Push Images
+
+# Publishes the two images the Helm chart (charts/castellan) references as
+# image.castellan and image.rack. Requires DOCKERHUB_USERNAME/DOCKERHUB_TOKEN
+# repo secrets once Docker Hub push access is provisioned.
+
+on:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  DOCKERHUB_REPO_CASTELLAN: ${{ vars.DOCKERHUB_NAMESPACE }}/castellan
+  DOCKERHUB_REPO_RACK: ${{ vars.DOCKERHUB_NAMESPACE }}/castellan-rack
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Metadata for castellan image
+        id: meta-castellan
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REPO_CASTELLAN }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
+
+      - name: Build and push castellan image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta-castellan.outputs.tags }}
+          labels: ${{ steps.meta-castellan.outputs.labels }}
+
+      - name: Metadata for rack image
+        id: meta-rack
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REPO_RACK }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
+
+      - name: Build and push rack image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.rack
+          push: true
+          tags: ${{ steps.meta-rack.outputs.tags }}
+          labels: ${{ steps.meta-rack.outputs.labels }}

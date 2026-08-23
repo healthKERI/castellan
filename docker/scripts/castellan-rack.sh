@@ -5,8 +5,8 @@ ROUTE_MARKER=/usr/local/var/keri/.castellan-loadbalancer-route-provisioned
 if [ ! -f "${ROUTE_MARKER}" ]; then
   echo "Provisioning castellan load balancer route..."
   CASTELLAN_AID=$(kli aid --name castellan --alias castellan)
-  ROUTE_CONFIG=$(printf '{"aid":"%s","tcpsrv":{"host":"0.0.0.0","port":%s},"http_hosts":[{"host":"castellan","port":%s}]}' \
-    "${CASTELLAN_AID}" "${CASTELLAN_RACK_PORT}" "${CASTELLAN_PORT}")
+  ROUTE_CONFIG=$(printf '{"aid":"%s","tcpsrv":{"host":"0.0.0.0","port":%s},"http_hosts":[{"host":"%s","port":%s}]}' \
+    "${CASTELLAN_AID}" "${CASTELLAN_RACK_PORT}" "${CASTELLAN_HTTP_HOST:-castellan}" "${CASTELLAN_PORT}")
   rack route create --name castellan --alias rack --type load_balancer --config "${ROUTE_CONFIG}"
   touch "${ROUTE_MARKER}"
 else

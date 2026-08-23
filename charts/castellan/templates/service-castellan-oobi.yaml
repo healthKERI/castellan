@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "castellan.fullname" . }}-oobi
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan-oobi
+spec:
+  type: {{ .Values.castellanOobi.service.type }}
+  selector:
+    {{- include "castellan.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: castellan-oobi
+  ports:
+    - name: http
+      port: {{ .Values.ports.oobi }}
+      targetPort: {{ .Values.ports.oobi }}

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "castellan.fullname" . }}-rack-lb-template
+  labels:
+    {{- include "castellan.labels" . | nindent 4 }}
+data:
+  castellan-loadbalancer.json.tmpl: |
+    {
+      "dt": "2022-01-20T12:57:59.823350+00:00",
+      "resolver": {
+        "module_name": "rack.app.modules.resolving",
+        "function_name": "get_resolver",
+        "params": {
+          "db_host": "${CASTELLAN_LB_DB_HOST}",
+          "db_name": "${CASTELLAN_LB_DB_NAME}",
+          "db_user": "${CASTELLAN_LB_DB_USER}",
+          "db_pass": "${CASTELLAN_LB_DB_PASS}"
+        }
+      }
+    }
