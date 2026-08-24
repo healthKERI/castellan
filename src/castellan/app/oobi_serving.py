@@ -66,7 +66,9 @@ def setup(
     app = falcon.App(
         middleware=falcon.CORSMiddleware(allow_origins="*", allow_credentials="*")
     )
-    app.add_route("/oobi/{said}", OobiDispatchEnd(kel_svc, schema_svc, issued_svc, received_svc))
+    app.add_route(
+        "/oobi/{said}", OobiDispatchEnd(kel_svc, schema_svc, issued_svc, received_svc)
+    )
     app.add_route("/oobi/server", ServerOobiEnd(server_svc, kel_svc))
 
     server = indirecting.createHttpServer(host=host, port=port, app=app)

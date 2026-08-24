@@ -14,7 +14,7 @@ from castellan.core.services.dynamic_fields import PhoneField, EmailFieldValue
 class TestGetCredentialStream:
     """Test suite for IssuedCredentialService.get_credential_stream"""
 
-    @patch("castellan.core.services.issued_credential_service.serdering.SerderKERI")
+    @patch("castellan.core.services.issued_credential_service.serdering.SerderACDC")
     @patch("castellan.core.services.issued_credential_service.IssuedCredential")
     def test_does_not_raise_when_tvy_is_none(self, mock_cred_cls, mock_serder_cls):
         """When constructed without a live Tevery (the OOBI-serving case), a
@@ -22,7 +22,7 @@ class TestGetCredentialStream:
         service = IssuedCredentialService(tvy=None)
 
         mock_cred = Mock()
-        mock_cred.sad = {"d": "said123"}
+        mock_cred.sad = {"d": "said123", "v": "ACDC10JSON000000_"}
         mock_cred_cls.objects.get.return_value = mock_cred
 
         mock_serder = Mock()

@@ -51,7 +51,7 @@ def flatten_dynamic_fields(dynamic_fields) -> str:
     """Extract searchable text from dynamic fields list."""
     parts = []
     for field in dynamic_fields:
-        if hasattr(field, 'get_value_for_search'):
+        if hasattr(field, "get_value_for_search"):
             parts.append(field.get_value_for_search())
     return " ".join(parts)
 
@@ -77,7 +77,12 @@ class IssuedCredentialService:
     """Service for managing credentials issued by this account."""
 
     def __init__(
-        self, hby: Optional[Habery] = None, rgy=None, tvy=None, parser=None, schema_svc=None
+        self,
+        hby: Optional[Habery] = None,
+        rgy=None,
+        tvy=None,
+        parser=None,
+        schema_svc=None,
     ):
         self.hby = hby
         self.rgy = rgy
@@ -152,7 +157,6 @@ class IssuedCredentialService:
         logger.info("FUCK YOU YOU FUCKING CUNT")
         logger.info(list(qs))
         logger.info("FUCK YOU YOU FUCKING TWAT")
-
 
         total = qs.count()
         num_pages = max(1, math.ceil(total / page_size)) if total > 0 else 1
@@ -235,7 +239,9 @@ class IssuedCredentialService:
         dynamic_fields = []
         if dynamic_fields_data:
             try:
-                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                dynamic_fields = [
+                    create_dynamic_field(fd) for fd in dynamic_fields_data
+                ]
                 search_parts.append(flatten_dynamic_fields(dynamic_fields))
             except ValueError as e:
                 logger.warning(f"Invalid dynamic field data: {e}")
@@ -281,7 +287,9 @@ class IssuedCredentialService:
                     raise ValidationError("dynamic_fields must be a list")
 
                 # Validate and create dynamic field objects
-                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                dynamic_fields = [
+                    create_dynamic_field(fd) for fd in dynamic_fields_data
+                ]
                 cred.dynamic_fields = dynamic_fields
 
                 # Rebuild search_text

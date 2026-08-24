@@ -1,5 +1,6 @@
 # -*- encoding: utf-8 -*-
 """Tests for dynamic fields functionality."""
+
 import pytest
 from datetime import date
 from mongoengine import ValidationError

@@ -5,6 +5,7 @@ castellan.core.services.dynamic_fields module
 EmbeddedDocument models for dynamic fields on IssuedCredential.
 Supports phone, address, date, url, email, and text field types.
 """
+
 from datetime import datetime
 from keri.help import ogler
 
@@ -23,8 +24,8 @@ class DynamicField(EmbeddedDocument):
     """Base class for dynamic credential fields."""
 
     meta = {
-        'allow_inheritance': True,
-        'abstract': True,
+        "allow_inheritance": True,
+        "abstract": True,
     }
 
     label = StringField(required=True, max_length=255)
@@ -40,6 +41,7 @@ class DynamicField(EmbeddedDocument):
 
 class PhoneField(DynamicField):
     """Phone number field."""
+
     value = StringField(required=True, max_length=50)
 
     def to_dict(self):
@@ -51,6 +53,7 @@ class PhoneField(DynamicField):
 
 class AddressField(DynamicField):
     """Address field."""
+
     value = StringField(required=True, max_length=500)
 
     def to_dict(self):
@@ -62,10 +65,13 @@ class AddressField(DynamicField):
 
 class DateFieldValue(DynamicField):
     """Date field with validation."""
+
     value = DateField(required=True)
 
     def to_dict(self):
-        logger.info(f"Converting DateFieldValue to dict with label: {self.label}, value: {self.value}")
+        logger.info(
+            f"Converting DateFieldValue to dict with label: {self.label}, value: {self.value}"
+        )
         return {
             "type": "date",
             "label": self.label,
@@ -79,6 +85,7 @@ class DateFieldValue(DynamicField):
 
 class UrlField(DynamicField):
     """URL field with validation."""
+
     value = URLField(required=True)
 
     def to_dict(self):
@@ -90,6 +97,7 @@ class UrlField(DynamicField):
 
 class EmailFieldValue(DynamicField):
     """Email field with validation."""
+
     value = EmailField(required=True)
 
     def to_dict(self):
@@ -101,6 +109,7 @@ class EmailFieldValue(DynamicField):
 
 class TextField(DynamicField):
     """Text field."""
+
     value = StringField(required=True, max_length=2000)
 
     def to_dict(self):
@@ -142,12 +151,14 @@ def create_dynamic_field(field_data: dict) -> DynamicField:
     field_class = type_map.get(field_type)
     if not field_class:
         valid_types = ", ".join(type_map.keys())
-        raise ValueError(f"Invalid field type: {field_type}. Valid types: {valid_types}")
+        raise ValueError(
+            f"Invalid field type: {field_type}. Valid types: {valid_types}"
+        )
 
     # Coerce value for date fields to appropriate type
     if field_type == "date":
         date_value = None
-        for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d']:
+        for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"]:
             try:
                 date_value = datetime.strptime(value, fmt)
                 break

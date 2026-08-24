@@ -153,6 +153,7 @@ class IssuedCredentialCollectionEnd:
             raise falcon.HTTPBadRequest(title="Invalid Request", description=str(e))
         except Exception as e:
             import traceback
+
             logger.exception(traceback.format_exc())
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
