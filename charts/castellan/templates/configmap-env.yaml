@@ -4,6 +4,17 @@ metadata:
   name: {{ include "castellan.fullname" . }}-env
   labels:
     {{- include "castellan.labels" . | nindent 4 }}
+  annotations:
+    # castellan-init (job-castellan-init.yaml) reads this via envFrom and
+    # runs as a pre-install/pre-upgrade hook -- hooks all run to completion
+    # before Helm applies any normal (non-hook) resource, so this ConfigMap
+    # must be a hook too, ordered ahead of the Job, or the Job starts before
+    # it exists. No hook-succeeded here: the castellan/castellan-oobi
+    # Deployments are normal resources applied *after* the hook phase and
+    # need this ConfigMap to still be around by then.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
 data:
   CASTELLAN_DB_NAME: {{ .Values.mongodb.databaseName | quote }}
   CASTELLAN_PORT: {{ .Values.ports.castellan | quote }}

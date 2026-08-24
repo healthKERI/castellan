@@ -11,7 +11,8 @@ on the services, ports, and volumes.
 ### Kubernetes
 `charts/castellan` is a Helm chart for deploying to Kubernetes (MongoDB hosted externally).
 See `charts/castellan/values.yaml` for configuration and `helm template charts/castellan` to
-render manifests.
+render manifests. See `charts/castellan/testing/README.md` for a full walkthrough of standing up
+a disposable EKS cluster to test the chart end to end.
 
 ### Local development
 Create a virtualenv and install castellan in editable mode:

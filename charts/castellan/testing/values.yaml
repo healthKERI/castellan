@@ -1,0 +1,11 @@
+image:
+  castellan: {repository: "healthkeri/castellan", tag: "main"}
+  rack:      {repository: "healthkeri/castellan-rack", tag: "main"}
+
+mongodb:
+  connectionString:
+    secretName: castellan-mongo-conn
+
+rack:
+  externalLocation:
+    host: castellan-rack-placeholder.test

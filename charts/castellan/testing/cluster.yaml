@@ -1,0 +1,35 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: castellan-test
+  region: us-east-1
+  version: "1.34"
+
+iam:
+  withOIDC: true
+
+addons:
+  - name: vpc-cni
+    resolveConflicts: overwrite
+  - name: coredns
+  - name: kube-proxy
+  - name: metrics-server
+  # Required for the chart's PVC (charts/castellan/templates/pvc-keri-data.yaml)
+  # to dynamically provision -- EKS does not install this by default, and the
+  # legacy in-tree "kubernetes.io/aws-ebs" provisioner it ships instead no
+  # longer works on current Kubernetes versions. wellKnownPolicies handles the
+  # IRSA role for us (requires iam.withOIDC: true above) so this is the only
+  # step needed, unlike the manual `eksctl create iamserviceaccount` +
+  # `eksctl create addon` dance needed to retrofit it onto an existing cluster.
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
+
+managedNodeGroups:
+  - name: ng-1
+    instanceType: c7i-flex.large
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    volumeSize: 20

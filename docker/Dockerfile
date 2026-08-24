@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsodium-dev \
     libssl-dev \
     libffi-dev \
+    procps \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
