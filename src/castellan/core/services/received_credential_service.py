@@ -197,7 +197,9 @@ class ReceivedCredentialService:
         dynamic_fields = []
         if dynamic_fields_data:
             try:
-                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                dynamic_fields = [
+                    create_dynamic_field(fd) for fd in dynamic_fields_data
+                ]
                 search_parts.append(flatten_dynamic_fields(dynamic_fields))
             except ValueError as e:
                 logger.warning(f"Invalid dynamic field data: {e}")
@@ -248,7 +250,9 @@ class ReceivedCredentialService:
                     raise ValidationError("dynamic_fields must be a list")
 
                 # Validate and create dynamic field objects
-                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                dynamic_fields = [
+                    create_dynamic_field(fd) for fd in dynamic_fields_data
+                ]
                 cred.dynamic_fields = dynamic_fields
 
                 # Rebuild search_text
