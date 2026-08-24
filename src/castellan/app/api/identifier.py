@@ -14,6 +14,9 @@ Alias uniqueness is enforced server-side; duplicate alias → 409 Conflict.
 """
 
 import base64
+import json
+
+from requests_toolbelt import MultipartEncoder
 
 import falcon
 from keri.help import ogler
@@ -100,7 +103,7 @@ class IdentifierCollectionEnd:
 
         try:
             identifier = self.service.upload(
-                aid=aid, alias=alias, kel=bytes(kel), oobi=oobi
+                aid=aid, alias=alias, kel=bytes(kel), oobi=oobi  # type: ignore
             )
         except ConflictError as e:
             raise falcon.HTTPConflict(
@@ -182,8 +185,58 @@ class IdentifierKelEnd:
 class IdentifierResourceEnd:
     """Handles DELETE /identifiers/{aid}."""
 
-    def __init__(self, identifierSvc):
-        self.service = identifierSvc
+    def __init__(self, identifier_svc, key_event_log_service):
+        self.service = identifier_svc
+        self.key_event_log_service = key_event_log_service
+
+    def on_get(self, req, resp, aid):
+        """Identifier get endpoint
+
+        Parameters:
+            req (Request): Falcon HTTP request object
+            resp (Response): Falcon HTTP response object
+            aid (str): The aid of the Identifier requested
+        """
+        kel = req.get_param_as_bool("kel", default=False)
+
+        try:
+            identifier = self.service.get_identifier_with_key_state(aid)
+
+            ims = None
+            if kel:
+                ims = self.key_event_log_service.get_kel_stream(aid)
+                ims.extend(self.key_event_log_service.get_rpy_stream(aid))
+
+        except ConflictError as e:
+            raise falcon.HTTPConflict(
+                title="Conflict", description=f"A conflict error occurred: {e}"
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(
+                title="Not Found", description=f"Identifier not found with error: {e}"
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        if ims is not None:
+            multipart_data = MultipartEncoder(
+                fields={
+                    "doc": ("doc", json.dumps(identifier), "application/json"),
+                    "cesr": ("cesr", ims.decode("utf-8"), "application/cesr"),
+                }
+            )
+
+            resp.status = falcon.HTTP_201
+            resp.content_type = multipart_data.content_type
+            resp.data = multipart_data.to_string()
+
+        else:
+            resp.status = falcon.HTTP_200
+            resp.content_type = "application/json"
+            resp.media = identifier
 
     def on_delete(self, req, resp, aid):
         """Delete an uploaded identifier by AID."""

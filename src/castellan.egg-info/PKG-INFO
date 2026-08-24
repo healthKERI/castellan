@@ -11,6 +11,7 @@ Requires-Dist: mongoengine>=0.29.1
 Requires-Dist: pymongo>=4.11.2
 Requires-Dist: multicommand>=1.0.0
 Requires-Dist: requests>=2.34.2
+Requires-Dist: requests_toolbelt==1.0.0
 Provides-Extra: test
 Requires-Dist: pytest>=7.0.0; extra == "test"
 Requires-Dist: pytest-asyncio>=0.21.0; extra == "test"

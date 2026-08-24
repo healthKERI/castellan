@@ -15,30 +15,37 @@ class TestGetCredentialStream:
     """Test suite for IssuedCredentialService.get_credential_stream"""
 
     @patch("castellan.core.services.issued_credential_service.serdering.SerderACDC")
-    @patch("castellan.core.services.issued_credential_service.IssuedCredential")
-    def test_does_not_raise_when_tvy_is_none(self, mock_cred_cls, mock_serder_cls):
+    def test_does_not_raise_when_tvy_is_none(self, mock_serder_cls):
         """When constructed without a live Tevery (the OOBI-serving case), a
         missing tvy must not block resolving an already-stored credential."""
         service = IssuedCredentialService(tvy=None)
 
         mock_cred = Mock()
-        mock_cred.sad = {"d": "said123", "v": "ACDC10JSON000000_"}
-        mock_cred_cls.objects.get.return_value = mock_cred
+        mock_cred.sad = {"d": "said123", "v": "ACDC10JSON000000_", "ri": "reg123"}
+        mock_cred.anc = None  # No anchor
 
         mock_serder = Mock()
         mock_serder.raw = b"acdc-bytes"
+        mock_serder.sad = mock_cred.sad
         mock_serder_cls.return_value = mock_serder
+
+        # Mock get_credential and get_tel_events methods
+        service.get_credential = Mock(return_value=mock_cred)
+        service.get_tel_events = Mock(return_value=[])
 
         result = service.get_credential_stream("said123")
 
-        assert bytes(result) == b"acdc-bytes"
+        assert b"acdc-bytes" in bytes(result)
 
     def test_raises_not_found_when_tvy_set_and_said_missing(self):
-        mock_tvy = Mock()
-        mock_tvy.tevers = {}
-        service = IssuedCredentialService(tvy=mock_tvy)
+        service = IssuedCredentialService(tvy=Mock())
 
-        with pytest.raises(NotFoundError, match="Credential not in tevers"):
+        # Mock get_credential to raise NotFoundError
+        service.get_credential = Mock(
+            side_effect=NotFoundError("Credential not in MongoDB: said123")
+        )
+
+        with pytest.raises(NotFoundError, match="Credential not in MongoDB"):
             service.get_credential_stream("said123")
 
 

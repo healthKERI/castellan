@@ -16,6 +16,7 @@ src/castellan/app/api/issued_credential.py
 src/castellan/app/api/json_schema.py
 src/castellan/app/api/message.py
 src/castellan/app/api/oobi.py
+src/castellan/app/api/public_registrar.py
 src/castellan/app/api/received_credential.py
 src/castellan/app/api/registrar.py
 src/castellan/app/cli/__init__.py
@@ -39,6 +40,7 @@ src/castellan/core/services/issued_credential_service.py
 src/castellan/core/services/key_event_log_service.py
 src/castellan/core/services/message_service.py
 src/castellan/core/services/received_credential_service.py
+src/castellan/core/services/registrar_service.py
 src/castellan/core/services/schema_service.py
 src/castellan/core/services/server_service.py
 src/castellan/core/services/tel_event_service.py

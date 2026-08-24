@@ -14,9 +14,11 @@ from castellan.core.services.custom.custom_errors import (
     NotFoundError,
     ValidationError,
 )
+from keri import core, kering
 from keri.app.habbing import Habery
 from keri.core import coring, serdering
-from keri.help import ogler
+from keri.db import dbing
+from keri.help import ogler, helping
 from mongoengine import (
     BooleanField,
     DateTimeField,
@@ -27,6 +29,8 @@ from mongoengine import (
     ListField,
     DoesNotExist,
     EmbeddedDocumentField,
+    IntField,
+    EmbeddedDocument,
 )
 from castellan.core.services.dynamic_fields import DynamicField, create_dynamic_field
 
@@ -56,6 +60,14 @@ def flatten_dynamic_fields(dynamic_fields) -> str:
     return " ".join(parts)
 
 
+class TELAnc(EmbeddedDocument):
+    """Transaction Anchor to KEL event"""
+
+    prefix = StringField(required=True)
+    sn = IntField(required=True)  # Sequence number
+    said = StringField(required=True)
+
+
 class IssuedCredential(Document):
     """ACDC credential issued by this account to a recipient."""
 
@@ -73,6 +85,18 @@ class IssuedCredential(Document):
     updated_at = DateTimeField(default=datetime.now)
 
 
+class TELEvent(Document):
+    """Transaction Event Log Event Model"""
+
+    said = StringField(required=True, primary_key=True)  # Self-addressing identifier
+    credential_said = StringField(required=True)  # Reference to credential
+    sn = IntField(required=True)  # Sequence number
+    sad = DictField(required=True)  # Serialized event data
+    anc = EmbeddedDocumentField(TELAnc)  # Signature cigars
+    dts = StringField(required=True)  # Datetime stamp
+    created_at = DateTimeField(default=datetime.now)
+
+
 class IssuedCredentialService:
     """Service for managing credentials issued by this account."""
 
@@ -83,6 +107,7 @@ class IssuedCredentialService:
         tvy=None,
         parser=None,
         schema_svc=None,
+        kel_svc=None,
     ):
         self.hby = hby
         self.rgy = rgy
@@ -90,13 +115,14 @@ class IssuedCredentialService:
         self.parser = parser
         self.reger = rgy.reger if rgy is not None else None
         self.schema_svc = schema_svc
+        self.kel_svc = kel_svc
 
     # ------------------------------------------------------------------
     # Query
     # ------------------------------------------------------------------
 
+    @staticmethod
     def list_credentials(
-        self,
         filter=None,
         issuer=None,
         recipient=None,
@@ -160,7 +186,8 @@ class IssuedCredentialService:
 
         return credentials, total, num_pages
 
-    def get_credential(self, said: str):
+    @staticmethod
+    def get_credential(said: str):
         """Fetch a single IssuedCredential by SAID. Raises NotFoundError if missing."""
         try:
             cred = IssuedCredential.objects.get(said=said)
@@ -205,6 +232,8 @@ class IssuedCredentialService:
 
         if IssuedCredential.objects(said=said).first():
             raise ConflictError(f"Issued credential already exists: {said}")
+
+        self.kel_svc.get_keystate(issuer)
 
         try:
             self.parser.parse(ims=bytearray(acdc), tvy=self.tvy, local=False)
@@ -257,6 +286,9 @@ class IssuedCredentialService:
         )
         cred.save()
         logger.info(f"Saved issued credential: {creder.said}")
+
+        # 4. Capture TEL events
+        self.capture_tel_events(creder.issuer, regk, creder.said)
 
         if self.schema_svc is not None and doc.get("schema"):
             try:
@@ -315,14 +347,232 @@ class IssuedCredentialService:
             raise RuntimeError(f"Error deleting issued credential: {e}")
         logger.info(f"Deleted issued credential: {said}")
 
+    @staticmethod
+    def get_tel_events(credential_said: str) -> list:
+        """
+        Retrieve all TEL events for a specific credential
+
+        Args:
+            credential_said: Self-addressing identifier of the credential
+
+        Returns:
+            List of TELEvent documents ordered by sequence number
+        """
+        try:
+            return list(
+                TELEvent.objects(credential_said=credential_said).order_by("sn")
+            )
+        except Exception as e:
+            raise RuntimeError(f"An error occurred while querying TEL events: {e}")
+
     def get_credential_stream(self, said: str) -> bytearray:
-        """Return raw ACDC bytes for the given SAID (for stream=true requests)."""
+        """
+        Get ACDC + TEL stream for distribution
 
-        if self.tvy is not None and said not in self.tvy.tevers:
-            raise NotFoundError(f"Credential not in tevers: {said}")
+        Args:
+            said: Self-addressing identifier of the credential
 
-        cred = self.get_credential(said)
+        Returns:
+            Bytearray containing ACDC credential and all TEL events with attachments
+        """
         ims = bytearray()
-        serder = serdering.SerderACDC(sad=cred.sad)
+
+        # 1. Get credential from MongoDB
+        credential = self.get_credential(said)
+        if not credential:
+            raise NotFoundError(f"Credential not in MongoDB: {said}")
+
+        # 2. Serialize ACDC credential
+        serder = serdering.SerderACDC(sad=credential.sad)
         ims.extend(serder.raw)
+
+        anc = credential.anc
+        if anc is not None:
+            ims.extend(
+                core.Counter(
+                    core.Codens.SealSourceTriples, count=1, gvrsn=kering.Vrsn_1_0
+                ).qb64b
+            )
+            ims.extend(coring.Prefixer(qb64=anc.prefix).qb64b)
+            ims.extend(coring.Seqner(sn=anc.sn).qb64b)
+            ims.extend(coring.Saider(qb64=anc.said).qb64b)
+
+        # 3. Get and serialize TEL events with attachments
+        tel_events = self.get_tel_events(serder.sad.get("ri"))
+        tel_events.extend(self.get_tel_events(said))
+
+        for event in tel_events:
+            atc = bytearray()
+            serder = serdering.SerderKERI(sad=event.sad)
+            ims.extend(serder.raw)
+
+            # Add anchor
+            anc = event.anc
+            if anc is not None:
+                seqner = coring.Seqner(sn=anc.sn)
+                saider = coring.Saider(qb64b=anc.said)
+                couple = seqner.qb64b + saider.qb64b
+                atc.extend(
+                    core.Counter(
+                        core.Codens.SealSourceCouples, count=1, gvrsn=kering.Vrsn_1_0
+                    ).qb64b
+                )
+                atc.extend(couple)
+
+            # Add datetime stamp
+            dts = coring.Dater(dts=event.dts)
+            atc.extend(
+                core.Counter(
+                    code=core.Codens.FirstSeenReplayCouples,
+                    count=1,
+                    gvrsn=kering.Vrsn_1_0,
+                ).qb64b
+            )
+            atc.extend(core.Number(num=0, code=core.NumDex.Huge).qb64b)
+            atc.extend(dts.qb64b)
+
+            # Prepend attachment group counter
+            if len(atc) % 4:
+                raise ValueError(
+                    f"Invalid attachments size={len(atc)}, nonintegral quadlets"
+                )
+
+            pcnt = core.Counter(
+                code=core.Codens.AttachmentGroup,
+                count=(len(atc) // 4),
+                gvrsn=kering.Vrsn_1_0,
+            ).qb64b
+            ims.extend(pcnt)
+            ims.extend(atc)
+
         return ims
+
+    def capture_tel_events(self, issuer: str, regi: str, said: str):
+        """
+        Capture TEL events for a credential from reger to MongoDB
+
+        Parameters:
+            issuer: KERI prefix of the issuer
+            said: Self-addressing identifier of the credential
+            regi: KERI prefix of the reger
+        """
+        # Iterate through TEL events (similar to getFelItemPreIter for KEL)
+        # Note: May need to adjust method name based on actual Reger API
+        try:
+            vcp = bytearray(self.reger.cloneTvtAt(regi, sn=0))
+            iserder = serdering.SerderKERI(raw=vcp)
+            self.serialize_tel_event(issuer, iserder)
+
+            for msg in self.reger.clonePreIter(pre=said):
+                iserder = serdering.SerderKERI(raw=bytearray(msg))
+                self.serialize_tel_event(issuer, iserder)
+
+        except Exception as e:
+            logger.warning(f"Error capturing TEL events for {said}: {e}")
+            # Continue even if there are no TEL events or error occurs
+
+    def serialize_tel_event(
+        self, prefix: str, serder: serdering.SerderKERI
+    ) -> TELEvent:
+        """
+        Serialize TEL event from KERIpy format to MongoDB
+
+        Args:
+            prefix (str): KERI prefix of the issuer
+            serder (SerderKERI): TEL event serder
+
+        Returns:
+            The serialized TELEvent document
+        """
+
+        # 1. Get event from reger
+        event_said = serder.said
+        credential_said = serder.pre
+
+        # 2. Skip if already exists
+        if TELEvent.objects(said=event_said).first():
+            return TELEvent.objects.get(said=event_said)
+
+        # 3. Build event data
+        event_data = {
+            "said": event_said,
+            "credential_said": credential_said,
+            "sad": serder.ked,
+            "sn": serder.sn,
+        }
+
+        # 4. Add anchor
+        dgkey = dbing.dgKey(credential_said, event_said)  # get message
+        if couple := self.reger.getAnc(key=dgkey):
+            ancb = bytearray(couple)
+            seqner = coring.Seqner(qb64b=ancb, strip=True)
+            diger = coring.Diger(qb64b=ancb, strip=True)
+            event_data["anc"] = TELAnc(prefix=prefix, sn=seqner.sn, said=diger.qb64)
+
+        # 5. Add datetime stamp
+        if dts := serder.ked.get("dt"):
+            event_data["dts"] = helping.toIso8601(
+                coring.Dater(dts=dts.encode("utf-8")).datetime
+            )
+        else:
+            event_data["dts"] = helping.nowIso8601()
+
+        # 9. Save to MongoDB
+        tel_event = TELEvent(**event_data)
+        tel_event.save()
+
+        logger.info(
+            f"Serialized TEL event: {event_said} for credential: {credential_said}"
+        )
+        return tel_event
+
+    def add_tel_event(self, event_data: dict) -> TELEvent:
+        """
+        Add a TEL event for a credential
+
+        Args:
+            event_data: Dictionary containing TEL event fields:
+                - said: Self-addressing identifier of the event
+                - credential_said: Reference to the credential
+                - sad: Serialized event data
+                - sn: Sequence number
+                - sigs: Controller signatures (optional)
+                - wigs: Witness signatures (optional)
+                - cigs: Signature cigars (optional)
+                - tsgs: Timestamp signatures (optional)
+                - dts: Datetime stamp
+
+        Returns:
+            The created TELEvent document
+
+        Raises:
+            ValidationError: If event data is invalid
+            NotFoundError: If credential does not exist
+        """
+        # Validate required fields
+        required_fields = ["said", "credential_said", "sad", "sn", "dts"]
+        for field in required_fields:
+            if field not in event_data:
+                raise ValidationError(f"Missing required field: {field}")
+
+        # Validate credential exists
+        credential_said = event_data["credential_said"]
+        credential = self.get_credential(credential_said)
+        if not credential:
+            raise NotFoundError(f"Credential not found: {credential_said}")
+
+        # Check if event already exists
+        if TELEvent.objects(said=event_data["said"]).first():
+            logger.info(f"TEL event already exists: {event_data['said']}")
+            return TELEvent.objects.get(said=event_data["said"])
+
+        try:
+            # Process embedded documents if present
+            tel_event = TELEvent(**event_data)
+            tel_event.save()
+            logger.info(
+                f"Added TEL event: {tel_event.said} for credential: {credential_said}"
+            )
+            return tel_event
+        except Exception as e:
+            raise RuntimeError(f"An error occurred while saving TEL event: {e}")

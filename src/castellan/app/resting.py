@@ -25,23 +25,9 @@ from castellan.app.api.received_credential import (
     ReceivedCredentialResourceEnd,
 )
 from castellan.app.api.registrar import (
-    RegistrarTelCollectionEnd,
-    RegistrarTelResourceEnd,
     RegistrarOobiEnd,
+    RegistrarTELEnd,
 )
-from castellan.core.authing import Authenticater, SignatureValidationComponent
-from castellan.core.basing import databaseInit
-from castellan.core.haberying import Hby
-from castellan.core.services import (
-    IssuedCredentialService,
-    ReceivedCredentialService,
-    TelEventService,
-    MessageService,
-    IdentifierService,
-)
-from castellan.core.services.account_service import AccountService
-from castellan.core.services.key_event_log_service import KeyEventLogService
-from castellan.core.services.schema_service import SchemaService
 from hio.base import doing
 from hio.core import http
 from hio.help import decking
@@ -51,6 +37,21 @@ from keri.core import eventing, parsing, routing
 from keri.help import ogler
 from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
+
+from castellan.core.authing import Authenticater, SignatureValidationComponent
+from castellan.core.basing import databaseInit
+from castellan.core.haberying import Hby
+from castellan.core.services import (
+    IssuedCredentialService,
+    ReceivedCredentialService,
+    MessageService,
+    IdentifierService,
+)
+
+from castellan.core.services.account_service import AccountService
+from castellan.core.services.key_event_log_service import KeyEventLogService
+from castellan.core.services.registrar_service import RegistrarService
+from castellan.core.services.schema_service import SchemaService
 
 logger = ogler.getLogger()
 
@@ -128,15 +129,23 @@ def setup(
     kel_svc = KeyEventLogService(hby=hby)
     schema_svc = SchemaService()
     issued_svc = IssuedCredentialService(
-        hby=hby, rgy=rgy, tvy=tvy, parser=parser, schema_svc=schema_svc
+        hby=hby, rgy=rgy, tvy=tvy, parser=parser, schema_svc=schema_svc, kel_svc=kel_svc
     )
     received_svc = ReceivedCredentialService(
         hby=hby, rgy=rgy, tvy=tvy, parser=parser, schema_svc=schema_svc
     )
-    tel_svc = TelEventService(hby=hby, tvy=tvy, parser=parser)
+
     msg_svc = MessageService()
     identifier_svc = IdentifierService(
         kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab
+    )
+    registrar_svc = RegistrarService(
+        hby=hby,
+        hab=hab,
+        tvy=tvy,
+        rgy=rgy,
+        credential_service=issued_svc,
+        key_event_log_service=kel_svc,
     )
 
     # ------------------------------------------------------------------ #
@@ -169,17 +178,14 @@ def setup(
     )
 
     # Registrar routes (TEL events + OOBI)
-    app.add_route("/registrar/tel-events", RegistrarTelCollectionEnd(tel_svc))
-    app.add_route("/registrar/tel-events/{regk}", RegistrarTelResourceEnd(tel_svc))
-    app.add_route(
-        "/registrar/tel-events/{regk}/{vcid}", RegistrarTelResourceEnd(tel_svc)
-    )
+    app.add_route("/registrar/tel-events", RegistrarTELEnd(registrar_svc))
+
     # Standard KERI registrar OOBI (kering.Roles.registrar is the standard role name)
     app.add_route("/oobi/{cid}/registrar", RegistrarOobiEnd(hab))
 
     # Uploaded identifier routes
     app.add_route("/identifiers", IdentifierCollectionEnd(identifier_svc))
-    app.add_route("/identifiers/{aid}", IdentifierResourceEnd(identifier_svc))
+    app.add_route("/identifiers/{aid}", IdentifierResourceEnd(identifier_svc, kel_svc))
     app.add_route("/identifiers/{aid}/kel", IdentifierKelEnd(identifier_svc))
 
     # JSON Schema management routes

@@ -6,6 +6,7 @@ mongoengine>=0.29.1
 pymongo>=4.11.2
 multicommand>=1.0.0
 requests>=2.34.2
+requests_toolbelt==1.0.0
 
 [test]
 pytest>=7.0.0

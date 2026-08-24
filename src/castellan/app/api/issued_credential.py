@@ -36,8 +36,8 @@ def _serialize(cred):
 class IssuedCredentialCollectionEnd:
     """Handles GET /issued-credentials and POST /issued-credentials."""
 
-    def __init__(self, issuedCredentialSvc):
-        self.service = issuedCredentialSvc
+    def __init__(self, issued_credential_svc):
+        self.service = issued_credential_svc
 
     def on_get(self, req, resp):
         """List issued credentials with optional filtering and pagination.

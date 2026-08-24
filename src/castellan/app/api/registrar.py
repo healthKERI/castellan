@@ -15,127 +15,107 @@ standard OOBI resolution mechanism.
 """
 
 import falcon
+from castellan.core.services.registrar_service import (
+    RegistrarService,
+    KeystateBehindError,
+)
 from keri import kering
 from keri.help import ogler
-
-from castellan.core.services.custom.custom_errors import ConflictError
 
 logger = ogler.getLogger()
 
 
-def _serialize_event(event) -> dict:
-    return {
-        "said": event.said,
-        "regk": event.regk,
-        "vcid": event.vcid,
-        "sn": event.sn,
-        "event_type": event.event_type,
-        "receipt": event.receipt,
-        "created_at": event.created_at.isoformat() if event.created_at else None,
-    }
-
-
-class RegistrarTelCollectionEnd:
-    """
-    POST /registrar/tel-events
-
-    Accepts a raw CESR-encoded TEL event body, parses it, signs it with the
-    castellan registrar hab, and stores it.  Returns the event metadata plus
-    castellan's cigar receipt signature.
+class RegistrarTELEnd:
+    """GET /registrar/ — return the registrar hab's own AID.
+    PUT  /registrar/ — accept CESR grant bytes (IPEX grant or introduction).
     """
 
-    def __init__(self, telSvc):
-        self.service = telSvc
+    def __init__(self, registrarSvc: RegistrarService):
+        self.service = registrarSvc
+
+    def on_get(self, req, resp):
+        issuer = req.get_param("issuer", required=True)
+        issuer_sn = req.get_param_as_int("issuer_sn", required=True)
+        try:
+            saids = self.service.search_tel_events(issuer, issuer_sn)
+        except KeystateBehindError as e:
+            raise falcon.HTTPPreconditionFailed(
+                title="Keystate Behind",
+                description=str(e),
+            )
+        except Exception as e:
+            logger.error(f"RegistrarTELEnd: error: {e}")
+            raise falcon.HTTPInternalServerError(
+                title="Internal Error",
+                description=str(e),
+            )
+        resp.status = falcon.HTTP_200
+        resp.media = {"events": saids}
 
     def on_post(self, req, resp):
-        """
-        Receive a TEL event from an issuer.
+        """Accept CESR grant with optional metadata.
 
-        Request body: raw CESR-encoded TEL event bytes
-        Content-Type: application/cesr or application/octet-stream
-
-        Response (201):
-            {
-              "said": "<event SAID>",
-              "regk": "<registry prefix>",
-              "vcid": "<credential SAID or null>",
-              "sn":   <sequence number>,
-              "event_type": "vcp|vrt|iss|bis|rev|brv",
-              "receipt": "<castellan cigar signature qb64>"
-            }
+        Supports two content types:
+        1. multipart/form-data with "data" (CESR bytes) and "doc" (JSON) parts
+        2. application/cesr or other for backward compatibility (raw CESR bytes)
         """
-        try:
-            raw = req.bounded_stream.read()
-        except Exception as e:
+        # Check if multipart
+        if req.content_type and req.content_type.startswith("multipart/form-data"):
+            # Parse multipart form data
+            form = req.get_media()
+            doc: dict = {}
+            tel: bytes = b""
+            kel: bytes = b""
+
+            for part in form:
+                logger.info(
+                    f"RegistrarEnd: parsing tel with {part.name } - {part.content_type}"
+                )
+                if part.name == "doc":
+                    if part.content_type.startswith("application/json"):
+                        json_data = part.get_media()
+                        if isinstance(json_data, dict):
+                            doc.update(json_data)
+                        else:
+                            raise falcon.HTTPBadRequest(
+                                title="Invalid JSON",
+                                description="The doc part is not a valid JSON dictionary",
+                            )
+                elif part.name == "tel":
+                    tel = part.get_data()
+                elif part.name == "kel":
+                    kel = part.get_data()
+                else:
+                    raise falcon.HTTPBadRequest(
+                        title="Bad Request",
+                        description=f"Unexpected form part `{part.name}`",
+                    )
+
+            if not tel or not kel:
+                raise falcon.HTTPBadRequest(
+                    title="Missing Field", description="tel and kel parts are required"
+                )
+
+            if not doc:
+                raise falcon.HTTPBadRequest(
+                    title="Missing Field", description="doc part is required"
+                )
+
+            try:
+                self.service.parse_revocation(tel=tel, kel=kel, doc=doc)
+                logger.info("RegistrarEnd: parsed tel")
+            except Exception as e:
+                logger.error(f"RegistrarEnd: error parsing tel: {e}")
+                raise falcon.HTTPInternalServerError(
+                    title="Parse Error",
+                    description=f"Failed to parse tel: {e}",
+                )
+        else:
             raise falcon.HTTPBadRequest(
-                title="Read Error",
-                description=f"Could not read request body: {e}",
+                title="Unsupported Content Type", description="Unsupported Content Type"
             )
 
-        if not raw:
-            raise falcon.HTTPBadRequest(
-                title="Bad Request",
-                description="Request body must contain CESR-encoded TEL event bytes.",
-            )
-
-        try:
-            event, receipt_qb64 = self.service.receive_event(raw)
-        except ValueError as e:
-            raise falcon.HTTPBadRequest(title="Invalid TEL Event", description=str(e))
-        except ConflictError as e:
-            raise falcon.HTTPConflict(title="Conflict", description=str(e))
-        except Exception as e:
-            raise falcon.HTTPInternalServerError(
-                title="Internal Server Error",
-                description=f"An unexpected error occurred: {e}",
-            )
-
-        resp.status = falcon.HTTP_201
-        resp.content_type = "application/json"
-        resp.media = _serialize_event(event)
-
-
-class RegistrarTelResourceEnd:
-    """
-    GET /registrar/tel-events/{regk}
-    GET /registrar/tel-events/{regk}/{vcid}
-
-    Retrieve stored TEL events for a registry or a specific credential.
-    """
-
-    def __init__(self, telSvc):
-        self.service = telSvc
-
-    def on_get(self, req, resp, regk, vcid=None):
-        """
-        List TEL events.
-
-        Path params:
-            regk  — registry prefix (AID)
-            vcid  — credential SAID (optional; when present, filter to that credential)
-
-        Response (200):
-            { "regk": ..., "vcid": ..., "count": N, "events": [...] }
-        """
-        try:
-            if vcid:
-                events = self.service.get_events_for_credential(regk, vcid)
-            else:
-                events = self.service.get_events_for_registry(regk)
-        except Exception as e:
-            raise falcon.HTTPInternalServerError(
-                title="Internal Server Error",
-                description=f"An unexpected error occurred: {e}",
-            )
-
-        resp.status = falcon.HTTP_200
-        resp.content_type = "application/json"
-        resp.media = {
-            "regk": regk,
-            "vcid": vcid,
-            "count": len(events),
-            "events": [_serialize_event(e) for e in events],
-        }
+        resp.status = falcon.HTTP_204
 
 
 class RegistrarOobiEnd:

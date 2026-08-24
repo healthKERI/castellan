@@ -9,12 +9,13 @@ Castellan stores these so that all whisper instances can discover peers and
 exchange OOBIs before constructing a group multisig.
 """
 
+from dataclasses import asdict
 from datetime import datetime
 
 from keri import kering
 from keri.help import ogler
 from keri.app import habbing
-from mongoengine import DateTimeField, Document, StringField
+from mongoengine import DateTimeField, Document, StringField, DoesNotExist
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
@@ -75,9 +76,6 @@ class IdentifierService:
         if not kel:
             raise ValueError("kel is required")
 
-        if UploadedIdentifier.objects(alias=alias).first() is not None:
-            raise ConflictError(f"Alias '{alias}' is already uploaded to castellan")
-
         if self.parser is None or self.kvy is None:
             raise RuntimeError(
                 "IdentifierService requires parser and kvy to process KEL"
@@ -96,6 +94,9 @@ class IdentifierService:
         if self.kelSvc is not None:
             try:
                 self.kelSvc.capture_kel(aid)
+                self.kelSvc.scan_for_delegates(aid)
+                self.kelSvc.capture_rpys(aid)
+
                 logger.info(f"KEL captured for aid={aid}")
                 if self.hby is not None and self.castellan_hab is not None:
                     group_hab = self.hby.habs.get(aid)
@@ -112,8 +113,10 @@ class IdentifierService:
             except Exception as e:
                 raise RuntimeError(f"KEL capture failed for aid={aid}: {e}")
 
-        identifier = UploadedIdentifier(aid=aid, alias=alias, oobi=oobi)
-        identifier.save()
+        if (identifier := UploadedIdentifier.objects(alias=alias).first()) is None:
+            identifier = UploadedIdentifier(aid=aid, alias=alias, oobi=oobi)
+            identifier.save()
+
         logger.info(f"Uploaded identifier aid={aid} alias={alias}")
 
         return identifier
@@ -126,7 +129,7 @@ class IdentifierService:
         """Fetch a single identifier by AID. Raises NotFoundError if missing."""
         try:
             return UploadedIdentifier.objects.get(aid=aid)
-        except UploadedIdentifier.DoesNotExist:
+        except DoesNotExist:
             raise NotFoundError(f"Identifier not found: {aid}")
 
     def get_kel_stream(self, aid: str) -> bytes:
@@ -150,3 +153,24 @@ class IdentifierService:
         identifier = self.get(aid)
         identifier.delete()
         logger.info(f"Deleted identifier aid={aid}")
+
+    def get_identifier_with_key_state(self, aid):
+        """Retrieves an Identifier by its aid."""
+        try:
+            identifier = UploadedIdentifier.objects.get(aid=aid)
+            key_state = asdict(self.kelSvc.get_keystate(identifier.aid))
+
+            return {
+                "alias": identifier.alias,
+                "aid": identifier.aid,
+                "key_state": key_state,
+            }
+        except DoesNotExist:
+            raise NotFoundError(f"Identifier not found: {aid}")
+
+        except Exception as e:
+            if isinstance(e, (ConflictError, NotFoundError)):
+                raise
+            raise RuntimeError(
+                f"An error occurred while querying identifier: {type(e)}"
+            )
