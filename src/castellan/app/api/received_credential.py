@@ -25,6 +25,8 @@ def _serialize(cred):
         "schema": cred.schema,
         "holder": cred.holder,
         "status": cred.status,
+        "notes": cred.notes,
+        "dynamic_fields": [field.to_dict() for field in cred.dynamic_fields],
         "created_at": cred.created_at.isoformat() if cred.created_at else None,
         "updated_at": cred.updated_at.isoformat() if cred.updated_at else None,
     }
@@ -86,7 +88,13 @@ class ReceivedCredentialCollectionEnd:
         """Upload a received credential.
 
         Expects multipart/form-data with:
-            doc  - application/json: { said, issuer, holder, schema }
+            doc  - application/json: {
+                     said, issuer, holder, schema,
+                     notes (optional),
+                     dynamic_fields (optional): [
+                       {type: "phone|address|date|url|email|text", label: str, value: any}
+                     ]
+                   }
             acdc - raw ACDC bytes
         """
         try:
@@ -148,7 +156,7 @@ class ReceivedCredentialCollectionEnd:
 
 
 class ReceivedCredentialResourceEnd:
-    """Handles GET/PUT/DELETE /received-credentials/{said}."""
+    """Handles GET/PATCH/DELETE /received-credentials/{said}."""
 
     def __init__(self, receivedCredentialSvc):
         self.service = receivedCredentialSvc
@@ -181,10 +189,13 @@ class ReceivedCredentialResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_put(self, req, resp, said):
-        """Update a received credential.
+    def on_patch(self, req, resp, said):
+        """Update a received credential (partial update).
 
-        Request body (JSON): { status?, holder? }
+        Request body (JSON): {
+            status?, holder?, notes?,
+            dynamic_fields?: [{type, label, value}]
+        }
         """
         try:
             body = req.media

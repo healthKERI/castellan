@@ -154,10 +154,6 @@ class IssuedCredentialService:
         else:
             qs = qs.order_by("-created_at")
 
-        logger.info("FUCK YOU YOU FUCKING CUNT")
-        logger.info(list(qs))
-        logger.info("FUCK YOU YOU FUCKING TWAT")
-
         total = qs.count()
         num_pages = max(1, math.ceil(total / page_size)) if total > 0 else 1
         credentials = list(qs.skip(page * page_size).limit(page_size))

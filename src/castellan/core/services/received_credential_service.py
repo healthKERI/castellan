@@ -11,14 +11,26 @@ from datetime import datetime
 from keri.app.habbing import Habery
 from keri.core import coring, serdering
 from keri.help import ogler
-from mongoengine import DateTimeField, DictField, Document, Q, StringField
+from mongoengine import (
+    DateTimeField,
+    DictField,
+    Document,
+    EmbeddedDocumentField,
+    ListField,
+    Q,
+    StringField,
+)
 
 from castellan.core.services.custom.custom_errors import (
     ConflictError,
     NotFoundError,
     ValidationError,
 )
-from castellan.core.services.issued_credential_service import flatten_values
+from castellan.core.services.dynamic_fields import DynamicField, create_dynamic_field
+from castellan.core.services.issued_credential_service import (
+    flatten_dynamic_fields,
+    flatten_values,
+)
 
 logger = ogler.getLogger()
 
@@ -32,6 +44,8 @@ class ReceivedCredential(Document):
     schema = DictField(required=True)
     holder = StringField(required=True)  # account AID (us)
     status = StringField()  # "valid" | "revoked"
+    notes = StringField(required=False)
+    dynamic_fields = ListField(EmbeddedDocumentField(DynamicField), default=list)
     search_text = StringField(db_field="_search_text")
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
@@ -175,7 +189,20 @@ class ReceivedCredentialService:
         except Exception:
             pass
 
-        search_text = flatten_values(creder.sad)
+        # Build search_text from sad and dynamic fields
+        search_parts = [flatten_values(creder.sad)]
+
+        # Handle dynamic_fields from doc
+        dynamic_fields_data = doc.get("dynamic_fields", [])
+        dynamic_fields = []
+        if dynamic_fields_data:
+            try:
+                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                search_parts.append(flatten_dynamic_fields(dynamic_fields))
+            except ValueError as e:
+                logger.warning(f"Invalid dynamic field data: {e}")
+
+        search_text = " ".join(search_parts)
 
         cred = ReceivedCredential(
             said=creder.said,
@@ -184,6 +211,8 @@ class ReceivedCredentialService:
             schema=doc.get("schema", {}),
             holder=doc.get("holder", creder.issuee or ""),
             status=status_text,
+            notes=doc.get("notes"),
+            dynamic_fields=dynamic_fields,
             search_text=search_text,
         )
         cred.save()
@@ -203,17 +232,40 @@ class ReceivedCredentialService:
         """
         Update allowed fields on a ReceivedCredential.
 
-        Allowed fields: status, holder.
+        Allowed fields: status, holder, notes, dynamic_fields.
         """
         cred = self.get_credential(said)
         try:
-            for field in ("status", "holder"):
+            # Handle simple field updates
+            for field in ("status", "holder", "notes"):
                 if field in update_data:
                     setattr(cred, field, update_data[field])
+
+            # Handle dynamic_fields updates
+            if "dynamic_fields" in update_data:
+                dynamic_fields_data = update_data["dynamic_fields"]
+                if not isinstance(dynamic_fields_data, list):
+                    raise ValidationError("dynamic_fields must be a list")
+
+                # Validate and create dynamic field objects
+                dynamic_fields = [create_dynamic_field(fd) for fd in dynamic_fields_data]
+                cred.dynamic_fields = dynamic_fields
+
+                # Rebuild search_text
+                search_parts = [flatten_values(cred.sad)]
+                if dynamic_fields:
+                    search_parts.append(flatten_dynamic_fields(dynamic_fields))
+                cred.search_text = " ".join(search_parts)
+
             cred.updated_at = datetime.now()
             cred.save()
+        except ValidationError:
+            raise
+        except ValueError as e:
+            raise ValidationError(f"Invalid dynamic field data: {e}")
         except Exception as e:
             raise RuntimeError(f"Error updating received credential: {e}")
+
         logger.info(f"Updated received credential: {said}")
         return cred
 
