@@ -7,6 +7,7 @@ Service and MongoDB document model for credentials received by this account.
 
 import math
 from datetime import datetime
+from typing import Optional
 
 from keri.app.habbing import Habery
 from keri.core import coring, serdering
@@ -19,6 +20,7 @@ from mongoengine import (
     ListField,
     Q,
     StringField,
+    DoesNotExist,
 )
 
 from castellan.core.services.custom.custom_errors import (
@@ -41,7 +43,8 @@ class ReceivedCredential(Document):
     said = StringField(required=True, primary_key=True)
     sad = DictField(required=True)
     issuer = StringField(required=True)  # external issuer AID
-    schema = DictField(required=True)
+    schema_said = StringField(required=True)
+    schema_title = StringField(required=True)
     holder = StringField(required=True)  # account AID (us)
     status = StringField()  # "valid" | "revoked"
     notes = StringField(required=False)
@@ -55,21 +58,26 @@ class ReceivedCredentialService:
     """Service for managing credentials received by this account."""
 
     def __init__(
-        self, hby: Habery = None, rgy=None, tvy=None, parser=None, schema_svc=None
+        self,
+        hby: Optional[Habery] = None,
+        rgy=None,
+        tvy=None,
+        parser=None,
+        field_tracking_svc=None,
     ):
         self.hby = hby
         self.rgy = rgy
         self.tvy = tvy
         self.parser = parser
         self.reger = rgy.reger if rgy is not None else None
-        self.schema_svc = schema_svc
+        self.field_tracking_svc = field_tracking_svc
 
     # ------------------------------------------------------------------
     # Query
     # ------------------------------------------------------------------
 
+    @staticmethod
     def list_credentials(
-        self,
         filter=None,
         issuer=None,
         holder=None,
@@ -129,7 +137,7 @@ class ReceivedCredentialService:
         """Fetch a single ReceivedCredential by SAID. Raises NotFoundError if missing."""
         try:
             cred = ReceivedCredential.objects.get(said=said)
-        except ReceivedCredential.DoesNotExist:
+        except DoesNotExist:
             raise NotFoundError(f"Received credential not found: {said}")
         except Exception as e:
             raise RuntimeError(f"Error querying received credential: {e}")
@@ -210,7 +218,8 @@ class ReceivedCredentialService:
             said=creder.said,
             sad=creder.sad,
             issuer=creder.issuer,
-            schema=doc.get("schema", {}),
+            schema_said=doc.get("schema_said", ""),
+            schema_title=doc.get("schema_title", ""),
             holder=doc.get("holder", creder.issuee or ""),
             status=status_text,
             notes=doc.get("notes"),
@@ -220,13 +229,14 @@ class ReceivedCredentialService:
         cred.save()
         logger.info(f"Saved received credential: {creder.said}")
 
-        if self.schema_svc is not None and doc.get("schema"):
+        # Track dynamic fields for this schema
+        if self.field_tracking_svc is not None and dynamic_fields:
             try:
-                self.schema_svc.save_schema(doc["schema"])
+                schema_said = doc.get("schema_said")
+                if schema_said:
+                    self.field_tracking_svc.track_fields(schema_said, dynamic_fields)
             except Exception as e:
-                logger.warning(
-                    f"Could not save schema for credential {creder.said}: {e}"
-                )
+                logger.warning(f"Could not track fields for schema: {e}")
 
         return cred
 

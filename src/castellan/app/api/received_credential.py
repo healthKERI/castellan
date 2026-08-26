@@ -127,7 +127,7 @@ class ReceivedCredentialCollectionEnd:
                     description='Missing required form field: "acdc"',
                 )
 
-            for field in ("said", "holder", "schema"):
+            for field in ("said", "holder", "schema_said"):
                 if field not in doc:
                     raise falcon.HTTPBadRequest(
                         title="Bad Request",

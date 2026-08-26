@@ -20,6 +20,7 @@ from castellan.app.api.json_schema import (
     JsonSchemaResourceEnd,
 )
 from castellan.app.api.message import MessageCollectionEnd, MessageResourceEnd
+from castellan.app.api.schema_field_tracking import SchemaFieldTrackingEnd
 from castellan.app.api.received_credential import (
     ReceivedCredentialCollectionEnd,
     ReceivedCredentialResourceEnd,
@@ -52,6 +53,9 @@ from castellan.core.services.account_service import AccountService
 from castellan.core.services.key_event_log_service import KeyEventLogService
 from castellan.core.services.registrar_service import RegistrarService
 from castellan.core.services.schema_service import SchemaService
+from castellan.core.services.schema_field_tracking_service import (
+    SchemaFieldTrackingService,
+)
 
 logger = ogler.getLogger()
 
@@ -128,11 +132,21 @@ def setup(
     )
     kel_svc = KeyEventLogService(hby=hby)
     schema_svc = SchemaService()
+    field_tracking_svc = SchemaFieldTrackingService()
     issued_svc = IssuedCredentialService(
-        hby=hby, rgy=rgy, tvy=tvy, parser=parser, schema_svc=schema_svc, kel_svc=kel_svc
+        hby=hby,
+        rgy=rgy,
+        tvy=tvy,
+        parser=parser,
+        kel_svc=kel_svc,
+        field_tracking_svc=field_tracking_svc,
     )
     received_svc = ReceivedCredentialService(
-        hby=hby, rgy=rgy, tvy=tvy, parser=parser, schema_svc=schema_svc
+        hby=hby,
+        rgy=rgy,
+        tvy=tvy,
+        parser=parser,
+        field_tracking_svc=field_tracking_svc,
     )
 
     msg_svc = MessageService()
@@ -191,6 +205,7 @@ def setup(
     # JSON Schema management routes
     app.add_route("/schemas", JsonSchemaCollectionEnd(schema_svc))
     app.add_route("/schemas/{said}", JsonSchemaResourceEnd(schema_svc))
+    app.add_route("/schemas/{said}/fields", SchemaFieldTrackingEnd(field_tracking_svc))
 
     # Intra-enterprise mailbox routes
     app.add_route("/messages", MessageCollectionEnd(msg_svc))

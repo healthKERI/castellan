@@ -22,7 +22,8 @@ def _serialize(cred):
         "said": cred.said,
         "sad": cred.sad,
         "issuer": cred.issuer,
-        "schema": cred.schema,
+        "schema_said": cred.schema_said,
+        "schema_title": cred.schema_title,
         "recipient": cred.recipient,
         "status": cred.status,
         "published": cred.published,
@@ -130,7 +131,7 @@ class IssuedCredentialCollectionEnd:
                     description='Missing required form field: "acdc"',
                 )
 
-            for field in ("said", "issuer", "schema"):
+            for field in ("said", "issuer", "schema_said"):
                 if field not in doc:
                     raise falcon.HTTPBadRequest(
                         title="Bad Request",

@@ -49,71 +49,6 @@ class TestGetCredentialStream:
             service.get_credential_stream("said123")
 
 
-class TestCaptureSchemaCapture:
-    """Test suite for IssuedCredentialService._capture's optional schema capture"""
-
-    def _make_creder(self):
-        creder = Mock()
-        creder.regi = "regk123"
-        creder.said = "said123"
-        creder.sad = {"field": "value"}
-        creder.issuer = "issuer_aid"
-        creder.issuee = "recipient_aid"
-        return creder
-
-    @patch("castellan.core.services.issued_credential_service.IssuedCredential")
-    def test_capture_saves_schema_when_schema_svc_provided(self, mock_cred_cls):
-        mock_schema_svc = Mock()
-        service = IssuedCredentialService(
-            rgy=Mock(), tvy=Mock(), schema_svc=mock_schema_svc
-        )
-
-        mock_cred = Mock()
-        mock_cred_cls.return_value = mock_cred
-
-        creder = self._make_creder()
-        doc = {"schema": {"$id": "ESAID123"}}
-
-        result = service._capture(creder, doc)
-
-        mock_schema_svc.save_schema.assert_called_once_with({"$id": "ESAID123"})
-        assert result == mock_cred
-
-    @patch("castellan.core.services.issued_credential_service.IssuedCredential")
-    def test_capture_skips_schema_save_when_no_schema_svc(self, mock_cred_cls):
-        service = IssuedCredentialService(rgy=Mock(), tvy=Mock(), schema_svc=None)
-
-        mock_cred = Mock()
-        mock_cred_cls.return_value = mock_cred
-
-        creder = self._make_creder()
-        doc = {"schema": {"$id": "ESAID123"}}
-
-        result = service._capture(creder, doc)
-
-        assert result == mock_cred
-
-    @patch("castellan.core.services.issued_credential_service.IssuedCredential")
-    def test_capture_swallows_schema_svc_exceptions(self, mock_cred_cls):
-        """Schema capture is supplementary and must never fail a credential save."""
-        mock_schema_svc = Mock()
-        mock_schema_svc.save_schema.side_effect = Exception("boom")
-        service = IssuedCredentialService(
-            rgy=Mock(), tvy=Mock(), schema_svc=mock_schema_svc
-        )
-
-        mock_cred = Mock()
-        mock_cred_cls.return_value = mock_cred
-
-        creder = self._make_creder()
-        doc = {"schema": {"$id": "ESAID123"}}
-
-        result = service._capture(creder, doc)
-
-        assert result == mock_cred
-        mock_cred.save.assert_called_once()
-
-
 class TestDynamicFieldsIntegration:
     """Test dynamic fields integration with IssuedCredential service."""
 
@@ -136,7 +71,8 @@ class TestDynamicFieldsIntegration:
 
         creder = self._make_creder()
         doc = {
-            "schema": {},
+            "schema_said": "ESAID123",
+            "schema_title": "Test Schema",
             "dynamic_fields": [
                 {"type": "email", "label": "Work Email", "value": "test@example.com"},
                 {"type": "phone", "label": "Mobile", "value": "+1-555-0123"},
@@ -170,7 +106,8 @@ class TestDynamicFieldsIntegration:
 
         creder = self._make_creder()
         doc = {
-            "schema": {},
+            "schema_said": "ESAID123",
+            "schema_title": "Test Schema",
             "dynamic_fields": [
                 {"type": "invalid_type", "label": "Test", "value": "value"}
             ],

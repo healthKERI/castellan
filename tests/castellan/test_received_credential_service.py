@@ -42,83 +42,6 @@ class TestGetCredentialStream:
             service.get_credential_stream("said123")
 
 
-class TestCaptureSchemaCapture:
-    """Test suite for ReceivedCredentialService._capture's optional schema capture"""
-
-    def _make_creder(self):
-        creder = Mock()
-        creder.regi = "regk123"
-        creder.said = "said123"
-        creder.sad = {"field": "value"}
-        creder.issuer = "issuer_aid"
-        creder.issuee = "holder_aid"
-        return creder
-
-    def _make_rgy_mock(self):
-        mock_rgy = Mock()
-        mock_tever = Mock()
-        mock_vc_state = Mock()
-        mock_vc_state.et = "iss"  # not revoked
-        mock_tever.vcState.return_value = mock_vc_state
-        mock_rgy.tevers = {"regk123": mock_tever}
-        return mock_rgy
-
-    @patch("castellan.core.services.received_credential_service.ReceivedCredential")
-    def test_capture_saves_schema_when_schema_svc_provided(self, mock_cred_cls):
-        mock_schema_svc = Mock()
-        mock_rgy = self._make_rgy_mock()
-        service = ReceivedCredentialService(
-            rgy=mock_rgy, tvy=Mock(), schema_svc=mock_schema_svc
-        )
-
-        mock_cred = Mock()
-        mock_cred_cls.return_value = mock_cred
-
-        creder = self._make_creder()
-        doc = {"schema": {"$id": "ESAID123"}, "holder": "holder_aid"}
-
-        result = service._capture(creder, doc)
-
-        mock_schema_svc.save_schema.assert_called_once_with({"$id": "ESAID123"})
-        assert result == mock_cred
-
-    @patch("castellan.core.services.received_credential_service.ReceivedCredential")
-    def test_capture_skips_schema_save_when_no_schema_svc(self, mock_cred_cls):
-        mock_rgy = self._make_rgy_mock()
-        service = ReceivedCredentialService(rgy=mock_rgy, tvy=Mock(), schema_svc=None)
-
-        mock_cred = Mock()
-        mock_cred_cls.return_value = mock_cred
-
-        creder = self._make_creder()
-        doc = {"schema": {"$id": "ESAID123"}, "holder": "holder_aid"}
-
-        result = service._capture(creder, doc)
-
-        assert result == mock_cred
-
-    @patch("castellan.core.services.received_credential_service.ReceivedCredential")
-    def test_capture_swallows_schema_svc_exceptions(self, mock_cred_cls):
-        """Schema capture is supplementary and must never fail a credential save."""
-        mock_schema_svc = Mock()
-        mock_schema_svc.save_schema.side_effect = Exception("boom")
-        mock_rgy = self._make_rgy_mock()
-        service = ReceivedCredentialService(
-            rgy=mock_rgy, tvy=Mock(), schema_svc=mock_schema_svc
-        )
-
-        mock_cred = Mock()
-        mock_cred_cls.return_value = mock_cred
-
-        creder = self._make_creder()
-        doc = {"schema": {"$id": "ESAID123"}, "holder": "holder_aid"}
-
-        result = service._capture(creder, doc)
-
-        assert result == mock_cred
-        mock_cred.save.assert_called_once()
-
-
 class TestDynamicFieldsIntegration:
     """Test dynamic fields integration with ReceivedCredential service."""
 
@@ -151,7 +74,8 @@ class TestDynamicFieldsIntegration:
 
         creder = self._make_creder()
         doc = {
-            "schema": {},
+            "schema_said": "ESAID123",
+            "schema_title": "Test Schema",
             "holder": "holder_aid",
             "dynamic_fields": [
                 {"type": "email", "label": "Work Email", "value": "test@example.com"},
@@ -187,7 +111,8 @@ class TestDynamicFieldsIntegration:
 
         creder = self._make_creder()
         doc = {
-            "schema": {},
+            "schema_said": "ESAID123",
+            "schema_title": "Test Schema",
             "holder": "holder_aid",
             "notes": "This is a test note",
         }
@@ -212,7 +137,8 @@ class TestDynamicFieldsIntegration:
 
         creder = self._make_creder()
         doc = {
-            "schema": {},
+            "schema_said": "ESAID123",
+            "schema_title": "Test Schema",
             "holder": "holder_aid",
             "dynamic_fields": [
                 {"type": "invalid_type", "label": "Test", "value": "value"}

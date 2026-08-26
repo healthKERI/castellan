@@ -9,11 +9,6 @@ import math
 from datetime import datetime
 from typing import Optional
 
-from castellan.core.services.custom.custom_errors import (
-    ConflictError,
-    NotFoundError,
-    ValidationError,
-)
 from keri import core, kering
 from keri.app.habbing import Habery
 from keri.core import coring, serdering
@@ -31,6 +26,12 @@ from mongoengine import (
     EmbeddedDocumentField,
     IntField,
     EmbeddedDocument,
+)
+
+from castellan.core.services.custom.custom_errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
 )
 from castellan.core.services.dynamic_fields import DynamicField, create_dynamic_field
 
@@ -74,7 +75,8 @@ class IssuedCredential(Document):
     said = StringField(required=True, primary_key=True)
     sad = DictField(required=True)
     issuer = StringField(required=True)  # account AID (us)
-    schema = DictField(required=True)
+    schema_said = StringField(required=True)
+    schema_title = StringField(required=True)
     recipient = StringField()  # holder AID
     status = StringField()  # "issued" | "revoked"
     published = BooleanField(default=False)
@@ -106,16 +108,16 @@ class IssuedCredentialService:
         rgy=None,
         tvy=None,
         parser=None,
-        schema_svc=None,
         kel_svc=None,
+        field_tracking_svc=None,
     ):
         self.hby = hby
         self.rgy = rgy
         self.tvy = tvy
         self.parser = parser
         self.reger = rgy.reger if rgy is not None else None
-        self.schema_svc = schema_svc
         self.kel_svc = kel_svc
+        self.field_tracking_svc = field_tracking_svc
 
     # ------------------------------------------------------------------
     # Query
@@ -277,7 +279,8 @@ class IssuedCredentialService:
             said=creder.said,
             sad=creder.sad,
             issuer=creder.issuer,
-            schema=doc.get("schema", {}),
+            schema_said=doc.get("schema_said", ""),
+            schema_title=doc.get("schema_title", ""),
             recipient=creder.issuee or doc.get("recipient"),
             status=status_text,
             published=doc.get("publish", False),
@@ -290,13 +293,14 @@ class IssuedCredentialService:
         # 4. Capture TEL events
         self.capture_tel_events(creder.issuer, regk, creder.said)
 
-        if self.schema_svc is not None and doc.get("schema"):
+        # Track dynamic fields for this schema
+        if self.field_tracking_svc is not None and dynamic_fields:
             try:
-                self.schema_svc.save_schema(doc["schema"])
+                schema_said = doc.get("schema_said")
+                if schema_said:
+                    self.field_tracking_svc.track_fields(schema_said, dynamic_fields)
             except Exception as e:
-                logger.warning(
-                    f"Could not save schema for credential {creder.said}: {e}"
-                )
+                logger.warning(f"Could not track fields for schema: {e}")
 
         return cred
 
