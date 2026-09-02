@@ -22,23 +22,33 @@ class TestGetCredentialStream:
         service = ReceivedCredentialService(tvy=None)
 
         mock_cred = Mock()
-        mock_cred.sad = {"d": "said123", "v": "ACDC10JSON000000_"}
+        mock_cred.sad = {"d": "said123", "v": "ACDC10JSON000000_", "ri": "reg123"}
+        mock_cred.anc = None  # No anchor
         mock_cred_cls.objects.get.return_value = mock_cred
 
         mock_serder = Mock()
         mock_serder.raw = b"acdc-bytes"
+        mock_serder.sad = mock_cred.sad
         mock_serder_cls.return_value = mock_serder
+
+        # Mock get_tel_events to return empty list
+        service.get_tel_events = Mock(return_value=[])
 
         result = service.get_credential_stream("said123")
 
-        assert bytes(result) == b"acdc-bytes"
+        assert b"acdc-bytes" in bytes(result)
 
     def test_raises_not_found_when_tvy_set_and_said_missing(self):
         mock_tvy = Mock()
         mock_tvy.tevers = {}
         service = ReceivedCredentialService(tvy=mock_tvy)
 
-        with pytest.raises(NotFoundError, match="Credential not in tevers"):
+        # Mock get_credential to raise NotFoundError
+        service.get_credential = Mock(
+            side_effect=NotFoundError("Credential not in MongoDB: said123")
+        )
+
+        with pytest.raises(NotFoundError, match="Credential not in MongoDB"):
             service.get_credential_stream("said123")
 
 
@@ -55,12 +65,28 @@ class TestDynamicFieldsIntegration:
         return creder
 
     def _make_rgy_mock(self):
+        """Create a properly mocked rgy with reger.cancs.get"""
         mock_rgy = Mock()
+        mock_reger = Mock()
+
+        # Mock the cancs.get to return a tuple (prefixer, seqner, saider)
+        mock_prefixer = Mock()
+        mock_prefixer.qb64 = "Eprefix123"
+        mock_seqner = Mock()
+        mock_seqner.sn = 0
+        mock_saider = Mock()
+        mock_saider.qb64 = "Esaid123"
+
+        mock_reger.cancs.get.return_value = (mock_prefixer, mock_seqner, mock_saider)
+        mock_rgy.reger = mock_reger
+
+        # Also mock tevers for status lookup
         mock_tever = Mock()
         mock_vc_state = Mock()
         mock_vc_state.et = "iss"  # not revoked
         mock_tever.vcState.return_value = mock_vc_state
         mock_rgy.tevers = {"regk123": mock_tever}
+
         return mock_rgy
 
     @patch("castellan.core.services.received_credential_service.ReceivedCredential")

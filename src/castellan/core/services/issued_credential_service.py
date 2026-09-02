@@ -79,6 +79,7 @@ class IssuedCredential(Document):
     schema_title = StringField(required=True)
     recipient = StringField()  # holder AID
     status = StringField()  # "issued" | "revoked"
+    anc = EmbeddedDocumentField(TELAnc)  # TEL anchor
     published = BooleanField(default=False)
     notes = StringField(required=False)
     dynamic_fields = ListField(EmbeddedDocumentField(DynamicField), default=list)
@@ -275,6 +276,9 @@ class IssuedCredentialService:
 
         search_text = " ".join(search_parts)
 
+        prefixer, seqner, saider = self.reger.cancs.get(keys=(creder.said,))
+        anc = TELAnc(prefix=prefixer.qb64, sn=seqner.sn, said=saider.qb64)
+
         cred = IssuedCredential(
             said=creder.said,
             sad=creder.sad,
@@ -286,6 +290,7 @@ class IssuedCredentialService:
             published=doc.get("publish", False),
             dynamic_fields=dynamic_fields,
             search_text=search_text,
+            anc=anc,
         )
         cred.save()
         logger.info(f"Saved issued credential: {creder.said}")

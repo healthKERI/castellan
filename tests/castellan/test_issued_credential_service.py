@@ -61,10 +61,36 @@ class TestDynamicFieldsIntegration:
         creder.issuee = "recipient_aid"
         return creder
 
+    def _make_rgy_mock(self):
+        """Create a properly mocked rgy with reger.cancs.get"""
+        mock_rgy = Mock()
+        mock_reger = Mock()
+
+        # Mock the cancs.get to return a tuple (prefixer, seqner, saider)
+        mock_prefixer = Mock()
+        mock_prefixer.qb64 = "Eprefix123"
+        mock_seqner = Mock()
+        mock_seqner.sn = 0
+        mock_saider = Mock()
+        mock_saider.qb64 = "Esaid123"
+
+        mock_reger.cancs.get.return_value = (mock_prefixer, mock_seqner, mock_saider)
+        mock_rgy.reger = mock_reger
+
+        # Also mock tevers for status lookup
+        mock_tever = Mock()
+        mock_vc_state = Mock()
+        mock_vc_state.et = "iss"  # not revoked
+        mock_tever.vcState.return_value = mock_vc_state
+        mock_rgy.tevers = {"regk123": mock_tever}
+
+        return mock_rgy
+
     @patch("castellan.core.services.issued_credential_service.IssuedCredential")
     def test_capture_with_dynamic_fields_in_search_text(self, mock_cred_cls):
         """Test that dynamic field values appear in search_text."""
-        service = IssuedCredentialService(rgy=Mock(), tvy=Mock())
+        mock_rgy = self._make_rgy_mock()
+        service = IssuedCredentialService(rgy=mock_rgy, tvy=Mock())
 
         mock_cred = Mock()
         mock_cred_cls.return_value = mock_cred
@@ -99,7 +125,8 @@ class TestDynamicFieldsIntegration:
     @patch("castellan.core.services.issued_credential_service.IssuedCredential")
     def test_capture_handles_invalid_dynamic_field_gracefully(self, mock_cred_cls):
         """Test that invalid field types are logged but don't crash save."""
-        service = IssuedCredentialService(rgy=Mock(), tvy=Mock())
+        mock_rgy = self._make_rgy_mock()
+        service = IssuedCredentialService(rgy=mock_rgy, tvy=Mock())
 
         mock_cred = Mock()
         mock_cred_cls.return_value = mock_cred
