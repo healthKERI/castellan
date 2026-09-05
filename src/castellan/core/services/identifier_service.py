@@ -9,13 +9,14 @@ Castellan stores these so that all whisper instances can discover peers and
 exchange OOBIs before constructing a group multisig.
 """
 
+import math
 from dataclasses import asdict
 from datetime import datetime
 
 from keri import kering
 from keri.help import ogler
 from keri.app import habbing
-from mongoengine import DateTimeField, Document, StringField, DoesNotExist
+from mongoengine import DateTimeField, Document, StringField, DoesNotExist, Q
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
@@ -121,9 +122,60 @@ class IdentifierService:
 
         return identifier
 
-    def list_all(self) -> list["UploadedIdentifier"]:
-        """Return all uploaded identifiers ordered by creation time."""
-        return list(UploadedIdentifier.objects.order_by("created_at"))
+    def list_identifiers(
+        self,
+        page: int = 0,
+        page_size: int = 20,
+        filter_term: str | None = None,
+        order: list[str] | None = None,
+    ) -> tuple[list["UploadedIdentifier"], int, int]:
+        """
+        List uploaded identifiers with pagination/filter/sort, mirroring
+        SchemaService.list_schemas / IssuedCredentialService.list_credentials.
+
+        Args:
+            page: Zero-indexed page number (default 0).
+            page_size: Results per page (default 20).
+            filter_term: Case-insensitive substring match against alias or aid.
+            order: Sort field(s), e.g. ["-created_at"] (default ["-created_at"]).
+
+        Returns:
+            (identifiers, total_count, num_pages)
+        """
+        qs = UploadedIdentifier.objects()
+
+        if filter_term:
+            qs = qs.filter(
+                Q(alias__icontains=filter_term) | Q(aid__icontains=filter_term)
+            )
+
+        if order:
+            if isinstance(order, str):
+                order = [order]
+            qs = qs.order_by(*order)
+        else:
+            qs = qs.order_by("-created_at")
+
+        total = qs.count()
+        num_pages = max(1, math.ceil(total / page_size)) if total > 0 else 1
+        items = list(qs.skip(page * page_size).limit(page_size))
+        return items, total, num_pages
+
+    def get_key_state_summary(self, aid: str) -> dict | None:
+        """
+        Best-effort remote key state for aid, same shape as returned by
+        get_identifier_with_key_state's "key_state" field. Returns None if
+        unavailable (no kelSvc, or state lookup fails) rather than raising —
+        callers use this to enrich a list response and a single bad AID
+        should not fail the whole page.
+        """
+        if self.kelSvc is None:
+            return None
+        try:
+            return asdict(self.kelSvc.get_keystate(aid))
+        except Exception as e:
+            logger.debug(f"Could not get key state for aid={aid}: {e}")
+            return None
 
     def get(self, aid: str) -> "UploadedIdentifier":
         """Fetch a single identifier by AID. Raises NotFoundError if missing."""
