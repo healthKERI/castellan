@@ -26,8 +26,8 @@ from castellan.core.services.custom.custom_errors import ConflictError, NotFound
 logger = ogler.getLogger()
 
 
-def _serialize(identifier) -> dict:
-    return {
+def _serialize(identifier, key_state: dict | None = None) -> dict:
+    data = {
         "aid": identifier.aid,
         "alias": identifier.alias,
         "oobi": identifier.oobi or "",
@@ -35,6 +35,9 @@ def _serialize(identifier) -> dict:
             identifier.created_at.isoformat() if identifier.created_at else None
         ),
     }
+    if key_state is not None:
+        data["key_state"] = key_state
+    return data
 
 
 class IdentifierCollectionEnd:
@@ -127,16 +130,53 @@ class IdentifierCollectionEnd:
 
     def on_get(self, req, resp):
         """
-        List all identifiers uploaded to castellan.
+        List identifiers uploaded to castellan, with pagination/filter/sort.
+
+        Query params:
+            page              - zero-indexed page (default 0)
+            page_size         - results per page (default 20)
+            filter            - free-text search against alias/aid
+            order             - sort field(s), e.g. -created_at or alias (repeatable)
+            include_key_state - if true, includes each identifier's current
+                                 remote key state (default false). Opt-in and
+                                 bounded to page_size because computing it can
+                                 trigger a full KEL re-verify per identifier
+                                 when the in-memory kever is stale — callers
+                                 that need the full unpaginated set (e.g. peer
+                                 discovery polling) should leave this off.
 
         Response (200):
             {
               "count": N,
+              "page": page,
+              "num_pages": num_pages,
               "identifiers": [...]
             }
         """
+        page = req.get_param_as_int("page", default=0)
+        page_size = req.get_param_as_int("page_size", default=20)
+        filter_term = req.get_param("filter", default=None)
+        order = req.get_param_as_list("order", default=None)
+        include_key_state = req.get_param_as_bool("include_key_state", default=False)
+
         try:
-            identifiers = self.service.list_all()
+            identifiers, total, num_pages = self.service.list_identifiers(
+                page=page,
+                page_size=page_size,
+                filter_term=filter_term,
+                order=order,
+            )
+            serialized = [
+                _serialize(
+                    i,
+                    (
+                        self.service.get_key_state_summary(i.aid)
+                        if include_key_state
+                        else None
+                    ),
+                )
+                for i in identifiers
+            ]
         except Exception as e:
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
@@ -146,8 +186,10 @@ class IdentifierCollectionEnd:
         resp.status = falcon.HTTP_200
         resp.content_type = "application/json"
         resp.media = {
-            "count": len(identifiers),
-            "identifiers": [_serialize(i) for i in identifiers],
+            "count": total,
+            "page": page,
+            "num_pages": num_pages,
+            "identifiers": serialized,
         }
 
 
