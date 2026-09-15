@@ -10,11 +10,10 @@ Messages are stored per-recipient and polled via HTTP GET (no SSE for MVP).
 """
 
 import math
-import uuid
 from datetime import datetime
 
 from keri.help import ogler
-from mongoengine import BinaryField, BooleanField, DateTimeField, Document, StringField
+from mongoengine import BinaryField, BooleanField, DateTimeField, Document, StringField, ObjectIdField, DoesNotExist
 
 from castellan.core.services.custom.custom_errors import NotFoundError
 
@@ -29,7 +28,7 @@ TOPIC_REVOCATION = "revocation"
 class Message(Document):
     """A CESR-encoded message relayed through the castellan mailbox."""
 
-    id = StringField(required=True, primary_key=True)
+    id = ObjectIdField(required=True, primary_key=True)
     recipient_aid = StringField(required=True)  # target AID
     sender_aid = StringField(required=True)  # authenticated sender (from ESSR)
     topic = StringField(required=True)  # multisig | issuance | revocation
@@ -76,7 +75,6 @@ class MessageService:
             The created Message document.
         """
         msg = Message(
-            id=str(uuid.uuid4()),
             recipient_aid=recipient_aid,
             sender_aid=sender_aid,
             topic=topic,
@@ -132,7 +130,7 @@ class MessageService:
         """Fetch a single Message by ID. Raises NotFoundError if missing."""
         try:
             return Message.objects.get(id=message_id)
-        except Message.DoesNotExist:
+        except DoesNotExist:
             raise NotFoundError(f"Message not found: {message_id}")
 
     # ------------------------------------------------------------------

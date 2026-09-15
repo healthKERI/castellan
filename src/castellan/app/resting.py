@@ -10,7 +10,8 @@ from castellan.app.api.account import AccountCollectionEnd, AccountResourceEnd
 from castellan.app.api.identifier import (
     IdentifierCollectionEnd,
     IdentifierKelEnd,
-    IdentifierResourceEnd,
+    IdentifierResourceEnd, MultisigIdentifierCollectionEnd, MultisigIdentifierResourceEnd,
+    MultisigIdentifierSignatureCollectionEnd,
 )
 from castellan.app.api.issued_credential import (
     IssuedCredentialCollectionEnd,
@@ -153,7 +154,7 @@ def setup(
 
     msg_svc = MessageService()
     identifier_svc = IdentifierService(
-        kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab
+        account_service=account_svc, kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab
     )
     registrar_svc = RegistrarService(
         hby=hby,
@@ -203,6 +204,10 @@ def setup(
     app.add_route("/identifiers", IdentifierCollectionEnd(identifier_svc))
     app.add_route("/identifiers/{aid}", IdentifierResourceEnd(identifier_svc, kel_svc))
     app.add_route("/identifiers/{aid}/kel", IdentifierKelEnd(identifier_svc))
+
+    app.add_route("/multisig/identifiers", MultisigIdentifierCollectionEnd(identifier_svc))
+    app.add_route("/multisig/identifiers/{multisig_id}", MultisigIdentifierResourceEnd(identifier_svc))
+    app.add_route("/multisig/identifiers/{multisig_id}/signatures", MultisigIdentifierSignatureCollectionEnd(identifier_svc))
 
     # JSON Schema management routes
     app.add_route("/schemas", JsonSchemaCollectionEnd(schema_svc))
