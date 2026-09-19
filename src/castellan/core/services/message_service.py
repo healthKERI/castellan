@@ -13,7 +13,15 @@ import math
 from datetime import datetime
 
 from keri.help import ogler
-from mongoengine import BinaryField, BooleanField, DateTimeField, Document, StringField, ObjectIdField, DoesNotExist
+from mongoengine import (
+    BinaryField,
+    BooleanField,
+    DateTimeField,
+    Document,
+    StringField,
+    ObjectIdField,
+    DoesNotExist,
+)
 
 from castellan.core.services.custom.custom_errors import NotFoundError
 

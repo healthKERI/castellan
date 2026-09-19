@@ -151,12 +151,11 @@ class AccountService:
 
     @staticmethod
     def list_accounts(
-            flter=None,
-            role=None,
-            page=0,
-            page_size=20,
-            order=None,
-
+        flter=None,
+        role=None,
+        page=0,
+        page_size=20,
+        order=None,
     ):
         """Returns all Accounts in the system.
 
@@ -248,7 +247,7 @@ class AccountService:
             raise NotFoundError("Account not found: " + aid)
 
         if account.role in ("owner", "") and doc.get("role") != "owner":
-            total_owners = Account.objects.count({'role': "owner"})
+            total_owners = Account.objects.count({"role": "owner"})
             if total_owners < 2:
                 raise ValueError("There must be at least one role 'Owner' account")
 
@@ -303,4 +302,3 @@ class AccountService:
         except Exception as e:
             raise RuntimeError(f"Error deleting account: {e}")
         logger.info(f"Deleted account: {account_id}")
-

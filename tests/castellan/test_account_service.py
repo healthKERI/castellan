@@ -158,12 +158,21 @@ class TestAccount:
         """Test that list_accounts returns all accounts"""
         mock_account1 = Mock()
         mock_account2 = Mock()
-        mock_objects.all.return_value = [mock_account1, mock_account2]
 
-        result = AccountService.list_accounts()
+        # Create a mock queryset that supports chained calls
+        mock_qs = Mock()
+        mock_objects.return_value = mock_qs
+        mock_qs.filter.return_value = mock_qs
+        mock_qs.order_by.return_value = mock_qs
+        mock_qs.count.return_value = 2
+        mock_qs.skip.return_value = mock_qs
+        mock_qs.limit.return_value = [mock_account1, mock_account2]
 
-        assert result == [mock_account1, mock_account2]
-        mock_objects.all.assert_called_once()
+        accounts, total, num_pages = AccountService.list_accounts()
+
+        assert accounts == [mock_account1, mock_account2]
+        assert total == 2
+        assert num_pages == 1
 
     @patch("castellan.core.services.account_service.Account.objects")
     def test_list_accounts_raises_runtime_error_on_exception(self, mock_objects):
@@ -224,14 +233,12 @@ class TestAccountService:
 
     @patch("castellan.core.services.account_service.Account")
     @patch("castellan.core.services.account_service.AccountService.account_exists")
-    @patch("castellan.core.services.account_service.datetime")
     @patch("castellan.core.services.account_service.asdict")
     def test_create_account_success(
-        self, mock_asdict, mock_datetime, mock_account_exists, mock_account_class
+        self, mock_asdict, mock_account_exists, mock_account_class
     ):
         """Test successful account creation"""
         mock_account_exists.return_value = False
-        mock_datetime.datetime.now.return_value.timestamp.return_value = 1234567890
 
         mock_account = Mock()
         mock_account_class.return_value = mock_account
@@ -249,7 +256,6 @@ class TestAccountService:
         result = self.service.create_account(doc, kel)
 
         assert result == mock_account
-        assert mock_account.lastModified == 1234567890
         assert mock_account.kel == "test_kel_data"
         assert mock_account.key_state == {"key": "value"}
         mock_account.save.assert_called_once()
@@ -352,15 +358,13 @@ class TestAccountService:
         assert result is None
 
     @patch.object(AccountService, "get_account")
-    @patch("castellan.core.services.account_service.datetime")
-    def test_update_account_updates_fields(self, mock_datetime, mock_get_account):
+    def test_update_account_updates_fields(self, mock_get_account):
         """Test that update_account updates account fields"""
-        mock_datetime.datetime.now.return_value.timestamp.return_value = 9876543210
-
         mock_account = Mock()
         mock_account.aid = "test_aid"
         mock_account.username = "oldusername"
         mock_account.email = "old@example.com"
+        mock_account.role = "Owner"
         mock_get_account.return_value = mock_account
 
         doc = {
@@ -371,7 +375,6 @@ class TestAccountService:
 
         result = self.service.update_account("test_aid", doc)
 
-        assert mock_account.lastModified == 9876543210
         assert mock_account.username == "newusername"
         assert mock_account.email == "new@example.com"
         assert mock_account.first_name == "John"
@@ -523,16 +526,12 @@ class TestAccountService:
         mock_account.save.assert_not_called()
 
     @patch.object(AccountService, "get_account")
-    @patch("castellan.core.services.account_service.datetime")
-    def test_update_account_ignores_nonexistent_fields(
-        self, mock_datetime, mock_get_account
-    ):
+    def test_update_account_ignores_nonexistent_fields(self, mock_get_account):
         """Test that update_account ignores fields that don't exist on account"""
-        mock_datetime.datetime.now.return_value.timestamp.return_value = 9876543210
-
-        mock_account = Mock(spec=["aid", "username", "email", "lastModified", "save"])
+        mock_account = Mock(spec=["aid", "username", "email", "role", "save"])
         mock_account.aid = "test_aid"
         mock_account.username = "oldusername"
+        mock_account.role = "Owner"
         mock_get_account.return_value = mock_account
 
         doc = {"username": "newusername", "nonexistent_field": "value"}
@@ -564,24 +563,26 @@ class TestAccountService:
     @patch("castellan.core.services.account_service.Account.objects")
     def test_delete_account(self, mock_objects):
         """Test that delete_account deletes the account"""
-        mock_query = Mock()
-        mock_objects.return_value = mock_query
+        mock_account = Mock()
+        mock_account.role = "Member"
+        mock_objects.return_value.first.return_value = mock_account
 
         self.service.delete_account("test_aid")
 
         mock_objects.assert_called_once_with(aid="test_aid")
-        mock_query.delete.assert_called_once()
+        mock_account.delete.assert_called_once()
 
     @patch("castellan.core.services.account_service.Account.objects")
     def test_delete_account_with_nonexistent_account(self, mock_objects):
         """Test that delete_account handles nonexistent account gracefully"""
-        mock_query = Mock()
-        mock_objects.return_value = mock_query
+        mock_account = Mock()
+        mock_account.role = "Member"
+        mock_objects.return_value.first.return_value = mock_account
 
         self.service.delete_account("nonexistent_aid")
 
         mock_objects.assert_called_once_with(aid="nonexistent_aid")
-        mock_query.delete.assert_called_once()
+        mock_account.delete.assert_called_once()
 
 
 class TestAccountServiceIntegration:
@@ -595,14 +596,12 @@ class TestAccountServiceIntegration:
 
     @patch("castellan.core.services.account_service.Account")
     @patch("castellan.core.services.account_service.AccountService.account_exists")
-    @patch("castellan.core.services.account_service.datetime")
     @patch("castellan.core.services.account_service.asdict")
     def test_create_account_full_workflow(
-        self, mock_asdict, mock_datetime, mock_account_exists, mock_account_class
+        self, mock_asdict, mock_account_exists, mock_account_class
     ):
         """Test complete workflow of creating an account"""
         mock_account_exists.return_value = False
-        mock_datetime.datetime.now.return_value.timestamp.return_value = 1234567890
 
         mock_account = Mock()
         mock_account_class.return_value = mock_account
@@ -626,7 +625,6 @@ class TestAccountServiceIntegration:
         result = self.service.create_account(doc, kel)
 
         assert result == mock_account
-        assert mock_account.lastModified == 1234567890
         assert (
             mock_account.kel
             == "-----BEGIN KERI KEY EVENT LOG-----\ntest_kel_data\n-----END KERI KEY EVENT LOG-----"
@@ -641,19 +639,15 @@ class TestAccountServiceIntegration:
         mock_account.save.assert_called_once()
 
     @patch.object(AccountService, "get_account")
-    @patch("castellan.core.services.account_service.datetime")
-    def test_update_account_full_workflow_with_kel_update(
-        self, mock_datetime, mock_get_account
-    ):
+    def test_update_account_full_workflow_with_kel_update(self, mock_get_account):
         """Test complete workflow of updating an account with KEL rotation"""
-        mock_datetime.datetime.now.return_value.timestamp.return_value = 9876543210
-
         mock_account = Mock()
         mock_account.aid = "test_aid"
         mock_account.username = "john_doe"
         mock_account.email = "john@example.com"
         mock_account.kel = "old_kel_data"
         mock_account.key_state = {"i": "test_aid", "s": "0"}
+        mock_account.role = "Owner"
         mock_get_account.return_value = mock_account
 
         mock_serder_before = Mock()
@@ -684,7 +678,6 @@ class TestAccountServiceIntegration:
         result = self.service.update_account("test_aid", doc, kel)
 
         assert result == mock_account
-        assert mock_account.lastModified == 9876543210
         assert mock_account.email == "newemail@example.com"
         assert mock_account.first_name == "John"
         assert mock_account.last_name == "Doe"

@@ -52,7 +52,6 @@ class AccountCollectionEnd:
                 page=page,
                 page_size=page_size,
                 order=order,
-
             )
 
             resp.status = falcon.HTTP_200
@@ -152,14 +151,15 @@ class AccountCollectionEnd:
         resp.content_type = "application/json"
         resp.media = _serialize(identifier)
 
+
 class AccountResourceEnd:
     """Handles POST /accounts/{aid} and DELETE /accounts/{aid}."""
 
     def __init__(self, service):
         self.service = service
-        
+
     def on_get(self, req, resp, aid):
-        """ Get an account.
+        """Get an account.
 
         Path params:
             aid - Account AID to update
@@ -260,4 +260,3 @@ class AccountResourceEnd:
                 title="Internal Server Error",
                 description=f"An unexpected error occurred: {e}",
             )
-

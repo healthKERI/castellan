@@ -46,15 +46,28 @@ def _serialize_identifier(identifier) -> dict:
     return data
 
 
-
 def _serialize_multisig(identifier) -> dict:
     """Serialize a MultisigIdentifier with its multisig-specific fields."""
     data = _serialize_identifier(identifier)
-    data["members"] = [_serialize_member(member) for member in identifier.members] if hasattr(identifier, "members") else []
-    data["signing_threshold"] = identifier.signing_threshold if hasattr(identifier, "signing_threshold") else None
-    data["rotation_threshold"] = identifier.rotation_threshold if hasattr(identifier, "rotation_threshold") else None
+    data["members"] = (
+        [_serialize_member(member) for member in identifier.members]
+        if hasattr(identifier, "members")
+        else []
+    )
+    data["signing_threshold"] = (
+        identifier.signing_threshold
+        if hasattr(identifier, "signing_threshold")
+        else None
+    )
+    data["rotation_threshold"] = (
+        identifier.rotation_threshold
+        if hasattr(identifier, "rotation_threshold")
+        else None
+    )
     data["key_state"] = identifier.key_state if hasattr(identifier, "key_state") else {}
-    data["current_event"] = identifier.current_event if hasattr(identifier, "current_event") else {}
+    data["current_event"] = (
+        identifier.current_event if hasattr(identifier, "current_event") else {}
+    )
     data["vcp"] = identifier.vcp if hasattr(identifier, "vcp") else {}
 
     return data
@@ -198,9 +211,7 @@ class IdentifierCollectionEnd:
                 filter_term=filter_term,
                 order=order,
             )
-            serialized = [
-                _serialize(i) for i in identifiers
-            ]
+            serialized = [_serialize(i) for i in identifiers]
         except Exception as e:
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
@@ -273,27 +284,30 @@ class MultisigIdentifierCollectionEnd:
             )
         if not isinstance(members, list) or len(members) == 0:
             raise falcon.HTTPBadRequest(
-                title="Bad Request",
-                description="'members' must be a non-empty list."
+                title="Bad Request", description="'members' must be a non-empty list."
             )
         if signing_threshold is not None:
             if not isinstance(signing_threshold, int) or signing_threshold < 1:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
-                    description="'signing threshold' must be a positive integer if provided."
+                    description="'signing threshold' must be a positive integer if provided.",
                 )
 
         if rotation_threshold is not None:
             if not isinstance(rotation_threshold, int) or rotation_threshold < 1:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
-                    description="'rotation threshold' must be a positive integer if provided."
+                    description="'rotation threshold' must be a positive integer if provided.",
                 )
 
         try:
             multisig_identifier = self.identifier_service.create_multisig_identifier(
-                alias=alias, accounts=members, aid=aid, kel=kel,
-                signing_threshold=signing_threshold, rotation_threshold=rotation_threshold
+                alias=alias,
+                accounts=members,
+                aid=aid,
+                kel=kel,
+                signing_threshold=signing_threshold,
+                rotation_threshold=rotation_threshold,
             )
 
         except ConflictError as e:
@@ -342,16 +356,15 @@ class MultisigIdentifierCollectionEnd:
         order = req.get_param_as_list("order", default=None)
 
         try:
-            identifiers, total, num_pages = self.identifier_service.list_multisig_identifiers(
-                page=page,
-                page_size=page_size,
-                filter_term=filter_term,
-                order=order,
+            identifiers, total, num_pages = (
+                self.identifier_service.list_multisig_identifiers(
+                    page=page,
+                    page_size=page_size,
+                    filter_term=filter_term,
+                    order=order,
+                )
             )
-            serialized = [
-                _serialize_multisig(i)
-                for i in identifiers
-            ]
+            serialized = [_serialize_multisig(i) for i in identifiers]
         except Exception as e:
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
@@ -452,6 +465,7 @@ class MultisigIdentifierResourceEnd:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
         except PermissionError as e:
             import traceback
+
             logger.error(traceback.format_exc())
             raise falcon.HTTPUnauthorized(
                 title="Unauthorized",
@@ -459,6 +473,7 @@ class MultisigIdentifierResourceEnd:
             )
         except ValueError as e:
             import traceback
+
             logger.error(traceback.format_exc())
             raise falcon.HTTPBadRequest(
                 title="Bad Request",
@@ -466,6 +481,7 @@ class MultisigIdentifierResourceEnd:
             )
         except Exception as e:
             import traceback
+
             logger.error(traceback.format_exc())
             raise falcon.HTTPInternalServerError(
                 title="Internal Server Error",
@@ -610,7 +626,7 @@ class MultisigIdentifierRegistryCollectionEnd:
 
         body = {}
         vcp: bytes | None = None
-        ixn: bytes | None= None
+        ixn: bytes | None = None
         for part in form:
             if part.name == "body":
                 if part.content_type.startswith("application/json"):
@@ -777,4 +793,3 @@ class IdentifierResourceEnd:
             )
 
         resp.status = falcon.HTTP_204
-

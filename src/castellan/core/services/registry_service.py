@@ -8,7 +8,14 @@ Service and MongoDB document model for credential registries.
 import math
 from datetime import datetime
 
-from mongoengine import Document, StringField, DateTimeField, DoesNotExist, Q, NotUniqueError
+from mongoengine import (
+    Document,
+    StringField,
+    DateTimeField,
+    DoesNotExist,
+    Q,
+    NotUniqueError,
+)
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 
@@ -17,7 +24,9 @@ class Registry(Document):
     """Credential registry document."""
 
     registry_pre = StringField(required=True, unique=True)  # Registry prefix/identifier
-    registry_said = StringField(required=True, unique=True)  # Self-addressing identifier
+    registry_said = StringField(
+        required=True, unique=True
+    )  # Self-addressing identifier
     registry_name = StringField(required=True)  # Human-readable name
     issuer_aid = StringField(required=True)  # AID of the issuer
     created_at = DateTimeField(default=datetime.now)
@@ -34,10 +43,10 @@ class RegistryService:
 
     @staticmethod
     def create_registry(
-            registry_pre: str,
-            registry_said: str,
-            registry_name: str,
-            issuer_aid: str,
+        registry_pre: str,
+        registry_said: str,
+        registry_name: str,
+        issuer_aid: str,
     ) -> Registry:
         """
         Create a new credential registry.
@@ -118,11 +127,11 @@ class RegistryService:
 
     @staticmethod
     def list_registries(
-            page: int = 0,
-            page_size: int = 20,
-            filter_term: str | None = None,
-            order: list[str] | None = None,
-            issuer_aid: str | None = None,
+        page: int = 0,
+        page_size: int = 20,
+        filter_term: str | None = None,
+        order: list[str] | None = None,
+        issuer_aid: str | None = None,
     ) -> tuple[list[Registry], int, int]:
         """
         List registries with pagination, filtering, and sorting.

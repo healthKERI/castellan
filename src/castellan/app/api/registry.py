@@ -103,10 +103,18 @@ class RegistryCollectionEnd:
         """
         body = req.media or {}
 
-        registry_pre = body.get("registry_pre", "").strip() if body.get("registry_pre") else ""
-        registry_said = body.get("registry_said", "").strip() if body.get("registry_said") else ""
-        registry_name = body.get("registry_name", "").strip() if body.get("registry_name") else ""
-        issuer_aid = body.get("issuer_aid", "").strip() if body.get("issuer_aid") else ""
+        registry_pre = (
+            body.get("registry_pre", "").strip() if body.get("registry_pre") else ""
+        )
+        registry_said = (
+            body.get("registry_said", "").strip() if body.get("registry_said") else ""
+        )
+        registry_name = (
+            body.get("registry_name", "").strip() if body.get("registry_name") else ""
+        )
+        issuer_aid = (
+            body.get("issuer_aid", "").strip() if body.get("issuer_aid") else ""
+        )
 
         if not registry_pre:
             raise falcon.HTTPBadRequest(

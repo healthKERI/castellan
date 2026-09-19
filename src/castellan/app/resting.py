@@ -10,7 +10,9 @@ from castellan.app.api.account import AccountCollectionEnd, AccountResourceEnd
 from castellan.app.api.identifier import (
     IdentifierCollectionEnd,
     IdentifierKelEnd,
-    IdentifierResourceEnd, MultisigIdentifierCollectionEnd, MultisigIdentifierResourceEnd,
+    IdentifierResourceEnd,
+    MultisigIdentifierCollectionEnd,
+    MultisigIdentifierResourceEnd,
     MultisigIdentifierSignatureCollectionEnd,
     MultisigIdentifierRegistryCollectionEnd,
 )
@@ -161,8 +163,13 @@ def setup(
     msg_svc = MessageService()
     registry_svc = RegistryService()
     identifier_svc = IdentifierService(
-        account_service=account_svc, registry_service=registry_svc,
-        kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab
+        account_service=account_svc,
+        registry_service=registry_svc,
+        kelSvc=kel_svc,
+        parser=parser,
+        kvy=kvy,
+        hby=hby,
+        castellan_hab=hab,
     )
     registrar_svc = RegistrarService(
         hby=hby,
@@ -213,10 +220,21 @@ def setup(
     app.add_route("/identifiers/{aid}", IdentifierResourceEnd(identifier_svc, kel_svc))
     app.add_route("/identifiers/{aid}/kel", IdentifierKelEnd(identifier_svc))
 
-    app.add_route("/multisig/identifiers", MultisigIdentifierCollectionEnd(identifier_svc))
-    app.add_route("/multisig/identifiers/{multisig_id}", MultisigIdentifierResourceEnd(identifier_svc))
-    app.add_route("/multisig/identifiers/{multisig_id}/signatures", MultisigIdentifierSignatureCollectionEnd(identifier_svc))
-    app.add_route("/multisig/identifiers/{multisig_id}/registries", MultisigIdentifierRegistryCollectionEnd(identifier_svc))
+    app.add_route(
+        "/multisig/identifiers", MultisigIdentifierCollectionEnd(identifier_svc)
+    )
+    app.add_route(
+        "/multisig/identifiers/{multisig_id}",
+        MultisigIdentifierResourceEnd(identifier_svc),
+    )
+    app.add_route(
+        "/multisig/identifiers/{multisig_id}/signatures",
+        MultisigIdentifierSignatureCollectionEnd(identifier_svc),
+    )
+    app.add_route(
+        "/multisig/identifiers/{multisig_id}/registries",
+        MultisigIdentifierRegistryCollectionEnd(identifier_svc),
+    )
 
     # JSON Schema management routes
     app.add_route("/schemas", JsonSchemaCollectionEnd(schema_svc))

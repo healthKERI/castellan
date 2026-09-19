@@ -24,6 +24,7 @@ class TestAccountCollectionEnd:
         mock_account1.email = "alice@example.com"
         mock_account1.first_name = "Alice"
         mock_account1.last_name = "Smith"
+        mock_account1.role = "Owner"
         mock_account1.key_state = {"sn": 0}
         mock_account1.created_at = None
 
@@ -33,6 +34,7 @@ class TestAccountCollectionEnd:
         mock_account2.email = "bob@example.com"
         mock_account2.first_name = "Bob"
         mock_account2.last_name = "Jones"
+        mock_account2.role = "Member"
         mock_account2.key_state = {"sn": 1}
         mock_account2.created_at = None
 
@@ -57,6 +59,7 @@ class TestAccountCollectionEnd:
                     "email": "alice@example.com",
                     "first_name": "Alice",
                     "last_name": "Smith",
+                    "role": "Owner",
                     "key_state": {"sn": 0},
                     "created_at": None,
                 },
@@ -66,6 +69,7 @@ class TestAccountCollectionEnd:
                     "email": "bob@example.com",
                     "first_name": "Bob",
                     "last_name": "Jones",
+                    "role": "Member",
                     "key_state": {"sn": 1},
                     "created_at": None,
                 },
@@ -94,6 +98,7 @@ class TestAccountCollectionEnd:
         mock_account.email = None
         mock_account.first_name = None
         mock_account.last_name = None
+        mock_account.role = None
         mock_account.key_state = None
         mock_account.created_at = None
 
@@ -114,13 +119,14 @@ class TestAccountCollectionEnd:
                 {
                     "aid": "EAccountAID",
                     "username": "testuser",
-                    "email": None,
-                    "first_name": None,
-                    "last_name": None,
+                    "email": "",
+                    "first_name": "",
+                    "last_name": "",
+                    "role": "Owner",
                     "key_state": None,
                     "created_at": None,
                 }
-            ]
+            ],
         }
 
     def test_on_get_handles_service_error(self):
