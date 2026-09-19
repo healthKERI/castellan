@@ -12,6 +12,7 @@ from castellan.app.api.identifier import (
     IdentifierKelEnd,
     IdentifierResourceEnd, MultisigIdentifierCollectionEnd, MultisigIdentifierResourceEnd,
     MultisigIdentifierSignatureCollectionEnd,
+    MultisigIdentifierRegistryCollectionEnd,
 )
 from castellan.app.api.issued_credential import (
     IssuedCredentialCollectionEnd,
@@ -31,6 +32,10 @@ from castellan.app.api.received_credential import (
 from castellan.app.api.registrar import (
     RegistrarOobiEnd,
     RegistrarTELEnd,
+)
+from castellan.app.api.registry import (
+    RegistryCollectionEnd,
+    RegistryResourceEnd,
 )
 from hio.base import doing
 from hio.core import http
@@ -59,6 +64,7 @@ from castellan.core.services.schema_service import SchemaService
 from castellan.core.services.schema_field_tracking_service import (
     SchemaFieldTrackingService,
 )
+from castellan.core.services.registry_service import RegistryService
 
 logger = ogler.getLogger()
 
@@ -153,8 +159,10 @@ def setup(
     )
 
     msg_svc = MessageService()
+    registry_svc = RegistryService()
     identifier_svc = IdentifierService(
-        account_service=account_svc, kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab
+        account_service=account_svc, registry_service=registry_svc,
+        kelSvc=kel_svc, parser=parser, kvy=kvy, hby=hby, castellan_hab=hab
     )
     registrar_svc = RegistrarService(
         hby=hby,
@@ -208,6 +216,7 @@ def setup(
     app.add_route("/multisig/identifiers", MultisigIdentifierCollectionEnd(identifier_svc))
     app.add_route("/multisig/identifiers/{multisig_id}", MultisigIdentifierResourceEnd(identifier_svc))
     app.add_route("/multisig/identifiers/{multisig_id}/signatures", MultisigIdentifierSignatureCollectionEnd(identifier_svc))
+    app.add_route("/multisig/identifiers/{multisig_id}/registries", MultisigIdentifierRegistryCollectionEnd(identifier_svc))
 
     # JSON Schema management routes
     app.add_route("/schemas", JsonSchemaCollectionEnd(schema_svc))
@@ -221,6 +230,10 @@ def setup(
     # Account management routes
     app.add_route("/accounts", AccountCollectionEnd(account_svc))
     app.add_route("/accounts/{aid}", AccountResourceEnd(account_svc))
+
+    # Registry routes
+    app.add_route("/registries", RegistryCollectionEnd(registry_svc))
+    app.add_route("/registries/{registry_pre}", RegistryResourceEnd(registry_svc))
 
     # Health check route (authenticated — verifies the signed connection works
     # end-to-end, not just that the process is alive)

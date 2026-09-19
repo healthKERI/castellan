@@ -20,7 +20,7 @@ from keri.app import habbing
 from keri.core.serdering import SerderKERI
 from keri.help import ogler
 from mongoengine import DateTimeField, Document, StringField, DoesNotExist, Q, ListField, \
-    EmbeddedDocument, IntField, EmbeddedDocumentField, DictField
+    EmbeddedDocument, IntField, EmbeddedDocumentField, DictField, BooleanField
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
 from castellan.core.services.key_event_log_service import Aid
@@ -47,6 +47,7 @@ class UploadedIdentifier(Document):
         "allow_inheritance": True
     }
 
+
 class MultisigMember(EmbeddedDocument):
     account_username = StringField(required=True)
     account_aid = StringField(required=True)
@@ -54,6 +55,9 @@ class MultisigMember(EmbeddedDocument):
     signing_threshold = StringField(required=False)
     rotation_threshold = StringField(required=False)
     public_key = StringField(required=False)
+    current_signature = StringField(required=False)
+    current_lead = BooleanField(default=False)
+
 
 class MultisigIdentifier(UploadedIdentifier):
     """A single multisig KERI identifier uploaded by a whisper instance."""
@@ -62,25 +66,27 @@ class MultisigIdentifier(UploadedIdentifier):
     signing_threshold = IntField(required=False)
     rotation_threshold = IntField(required=False)
     current_event = DictField(required=False)
+    current_metadata = DictField(required=False)
     key_state = DictField(required=False)
-
+    vcp = DictField(required=False)  # Registry inception event
 
 
 class IdentifierService:
     """Service for storing and retrieving castellan-uploaded identifiers."""
 
     def __init__(
-        self, account_service, kelSvc=None, parser=None, kvy=None, hby=None, castellan_hab=None
+            self, account_service, registry_service, kelSvc=None, parser=None, kvy=None, hby=None, castellan_hab=None
     ):
         self.account_service = account_service
         self.kelSvc = kelSvc
+        self.registry_service = registry_service
         self.parser = parser
         self.kvy = kvy
         self.hby = hby
         self.castellan_hab = castellan_hab
 
     def upload(
-        self, aid: str, alias: str, kel: bytes, oobi: str = ""
+            self, aid: str, alias: str, kel: bytes, oobi: str = ""
     ) -> "UploadedIdentifier":
         """
         Store an identifier uploaded by a whisper instance.
@@ -130,7 +136,7 @@ class IdentifierService:
                 if self.hby is not None and self.castellan_hab is not None:
                     group_hab = self.hby.habs.get(aid)
                     if group_hab is not None and isinstance(
-                        group_hab, habbing.GroupHab
+                            group_hab, habbing.GroupHab
                     ):
                         role_msgs = group_hab.makeEndRole(
                             eid=self.castellan_hab.pre, role=kering.Roles.mailbox
@@ -151,11 +157,11 @@ class IdentifierService:
         return identifier
 
     def list_identifiers(
-        self,
-        page: int = 0,
-        page_size: int = 20,
-        filter_term: str | None = None,
-        order: list[str] | None = None,
+            self,
+            page: int = 0,
+            page_size: int = 20,
+            filter_term: str | None = None,
+            order: list[str] | None = None,
     ) -> tuple[list["UploadedIdentifier"], int, int]:
         """
         List uploaded identifiers with pagination/filter/sort, mirroring
@@ -256,9 +262,9 @@ class IdentifierService:
     @staticmethod
     def list_multisig_identifiers(
             page: int = 0,
-        page_size: int = 20,
-        filter_term: str | None = None,
-        order: list[str] | None = None,
+            page_size: int = 20,
+            filter_term: str | None = None,
+            order: list[str] | None = None,
     ) -> tuple[list["MultisigIdentifier"], int, int]:
         """
         List multisig identifiers with pagination/filter/sort.
@@ -289,7 +295,7 @@ class IdentifierService:
         items = list(qs.skip(page * page_size).limit(page_size))
         return items, total, num_pages
 
-    def create_multisig_identifier(self, alias: str, accounts: List[Tuple[str,str,str]], aid: str, kel: bytes,
+    def create_multisig_identifier(self, alias: str, accounts: List[Tuple[str, str, str]], aid: str, kel: bytes,
                                    signing_threshold: Optional[int] = None,
                                    rotation_threshold: Optional[int] = None) -> MultisigIdentifier:
         """Creates a new multisig identifier."""
@@ -347,7 +353,7 @@ class IdentifierService:
         return multisig_identifier
 
     def join_multisig(
-        self, multisig_id: str, account_aid: str, member_aid: str, kel: bytes
+            self, multisig_id: str, account_aid: str, member_aid: str, kel: bytes
     ) -> MultisigIdentifier:
         """
         Allow a member to join a multisig identifier by providing their member AID and KEL.
@@ -432,7 +438,7 @@ class IdentifierService:
         return multisig
 
     def submit_multisig_inception(
-        self, multisig_id: str, account_aid: str, data: dict, icp: bytes
+            self, multisig_id: str, account_aid: str, data: dict, icp: bytes
     ) -> MultisigIdentifier:
         """
         Record that a member has submitted their signature for a multisig identifier.
@@ -517,15 +523,129 @@ class IdentifierService:
 
             return multisig
 
-
         multisig.current_event = inception_event.ked
 
         # Set the public_key flag for this member
         multisig.members[member_index].public_key = inception_event.verfers[member_index].qb64
         multisig.save()
 
-        logger.info(
-            f"NOT DONE CORRECTLY Member {account_aid} submitted signature for multisig {multisig_id}"
-        )
+        return multisig
+
+    def create_registry(
+            self,
+            multisig_id: str,
+            account_aid: str,
+            vcp: bytes,
+            ixn: bytes,
+            body: dict
+    ) -> MultisigIdentifier:
+        """
+        Create a credential registry for a multisig identifier.
+
+        Args:
+            multisig_id: The ID of the multisig identifier.
+            account_aid: The AID of the account creating the registry.
+            vcp: Raw CESR-encoded registry inception event bytes.
+            ixn: Raw CESR-encoded interaction event bytes.
+            body: Additional metadata (optional).
+
+        Returns:
+            The updated MultisigIdentifier document with vcp and current_event set.
+
+        Raises:
+            ValueError: If required parameters are missing or events cannot be parsed.
+            NotFoundError: If the multisig identifier is not found.
+            PermissionError: If the account is not authorized (not in members list).
+        """
+        if not multisig_id:
+            raise ValueError("multisig_id is required")
+        if not account_aid:
+            raise ValueError("account_aid is required")
+        if not vcp:
+            raise ValueError("vcp is required")
+        if not ixn:
+            raise ValueError("ixn is required")
+        if "name" not in body:
+            raise ValueError("registry name is require")
+
+        registry_name = body["name"]
+
+        # Load the multisig identifier
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        # Verify account_aid is in the members list
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to create registry for this multisig"
+            )
+
+        # Parse the vcp and ixn events
+        try:
+            vcp_event = SerderKERI(raw=bytes(vcp))
+        except Exception as e:
+            raise ValueError(f"Failed to parse vcp event: {e}")
+
+        try:
+            ixn_event = SerderKERI(raw=bytes(ixn))
+        except Exception as e:
+            raise ValueError(f"Failed to parse ixn event: {e}")
+
+        # Determine if 1 signature is enough and if so complete the event.
+        member_aid = multisig.members[member_idx].member_aid
+        tholder = self.hby.kevers[member_aid].tholder
+        if tholder.satisfy([member_idx]):
+            # Validate the KEL
+            if self.parser is None or self.kvy is None:
+                raise RuntimeError(
+                    "IdentifierService requires parser and kvy to process KEL"
+                )
+
+            try:
+                self.parser.parse(ims=bytearray(ixn), kvy=self.kvy, local=True)
+                self.parser.parse(ims=bytearray(vcp), kvy=self.kvy, local=True)
+            except Exception as e:
+                raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+
+            multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
+            multisig.current_event = None
+            for member in multisig.members:
+                member.public_key = None
+                member.current_signature = None
+                member.current_lead = False
+
+            multisig.save()
+
+            self.registry_service.create_registry(
+                registry_pre=vcp_event.pre,
+                registry_said=vcp_event.said,
+                registry_name=registry_name,
+                issuer_aid=multisig.aid
+            )
+
+            self.kelSvc.capture_kel(multisig.aid)
+            self.kelSvc.scan_for_delegates(multisig.aid)
+            self.kelSvc.capture_rpys(multisig.aid)
+
+        else:
+            # Update the multisig with the registry events
+            multisig.current_event = ixn_event.ked
+            multisig.members[member_idx].current_signature = ixn[ixn_event.size:].decode("utf-8")
+            multisig.members[member_idx].current_lead = True
+            multisig.current_metadata = dict(registry_name=registry_name)
+            multisig.vcp = vcp_event.ked
+            multisig.save()
+
+            logger.info(
+                f"Created registry for multisig {multisig_id} by account {account_aid}"
+            )
 
         return multisig

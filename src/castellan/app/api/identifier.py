@@ -27,13 +27,13 @@ from castellan.core.services.identifier_service import MultisigIdentifier
 logger = ogler.getLogger()
 
 
-def _serialize(identifier, key_state: dict | None = None) -> dict:
+def _serialize(identifier) -> dict:
     if isinstance(identifier, MultisigIdentifier):
-        return _serialize_multisig(identifier, key_state)
-    return _serialize_identifier(identifier, key_state)
+        return _serialize_multisig(identifier)
+    return _serialize_identifier(identifier)
 
 
-def _serialize_identifier(identifier, key_state: dict | None = None) -> dict:
+def _serialize_identifier(identifier) -> dict:
     data = {
         "id": str(identifier.id),
         "aid": identifier.aid,
@@ -43,20 +43,19 @@ def _serialize_identifier(identifier, key_state: dict | None = None) -> dict:
             identifier.created_at.isoformat() if identifier.created_at else None
         ),
     }
-    if key_state is not None:
-        data["key_state"] = key_state
     return data
 
 
 
-def _serialize_multisig(identifier, key_state: dict | None = None) -> dict:
+def _serialize_multisig(identifier) -> dict:
     """Serialize a MultisigIdentifier with its multisig-specific fields."""
-    data = _serialize_identifier(identifier, key_state)
+    data = _serialize_identifier(identifier)
     data["members"] = [_serialize_member(member) for member in identifier.members] if hasattr(identifier, "members") else []
     data["signing_threshold"] = identifier.signing_threshold if hasattr(identifier, "signing_threshold") else None
     data["rotation_threshold"] = identifier.rotation_threshold if hasattr(identifier, "rotation_threshold") else None
     data["key_state"] = identifier.key_state if hasattr(identifier, "key_state") else {}
     data["current_event"] = identifier.current_event if hasattr(identifier, "current_event") else {}
+    data["vcp"] = identifier.vcp if hasattr(identifier, "vcp") else {}
 
     return data
 
@@ -191,7 +190,6 @@ class IdentifierCollectionEnd:
         page_size = req.get_param_as_int("page_size", default=20)
         filter_term = req.get_param("filter", default=None)
         order = req.get_param_as_list("order", default=None)
-        include_key_state = req.get_param_as_bool("include_key_state", default=False)
 
         try:
             identifiers, total, num_pages = self.service.list_identifiers(
@@ -201,15 +199,7 @@ class IdentifierCollectionEnd:
                 order=order,
             )
             serialized = [
-                _serialize(
-                    i,
-                    (
-                        self.service.get_key_state_summary(i.aid)
-                        if include_key_state
-                        else None
-                    ),
-                )
-                for i in identifiers
+                _serialize(i) for i in identifiers
             ]
         except Exception as e:
             raise falcon.HTTPInternalServerError(
@@ -350,7 +340,6 @@ class MultisigIdentifierCollectionEnd:
         page_size = req.get_param_as_int("page_size", default=20)
         filter_term = req.get_param("filter", default=None)
         order = req.get_param_as_list("order", default=None)
-        include_key_state = req.get_param_as_bool("include_key_state", default=False)
 
         try:
             identifiers, total, num_pages = self.identifier_service.list_multisig_identifiers(
@@ -360,14 +349,7 @@ class MultisigIdentifierCollectionEnd:
                 order=order,
             )
             serialized = [
-                _serialize_multisig(
-                    i,
-                    (
-                        self.identifier_service.get_key_state_summary(i.aid)
-                        if include_key_state
-                        else None
-                    ),
-                )
+                _serialize_multisig(i)
                 for i in identifiers
             ]
         except Exception as e:
@@ -586,6 +568,111 @@ class MultisigIdentifierSignatureCollectionEnd:
             )
 
         resp.status = falcon.HTTP_200
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+
+class MultisigIdentifierRegistryCollectionEnd:
+    """Handles POST /multisig/identifiers/{multisig_id}/registry — create a credential registry."""
+
+    def __init__(self, identifierSvc):
+        self.service = identifierSvc
+
+    def on_post(self, req, resp, multisig_id):
+        """
+        Create a credential registry for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (multipart/form-data):
+            vcp  — binary part: raw CESR-encoded registry inception event bytes
+            ixn  — binary part: raw CESR-encoded interaction event bytes
+            body — JSON part: additional metadata (optional)
+
+        The account_aid is derived from req.context.account (authenticated caller).
+
+        Response (201): updated MultisigIdentifier document with vcp and current_event.
+        Response (400): if required parts are missing or parse failure.
+        Response (401): if the account is not authorized (not in members list).
+        Response (404): if the multisig identifier is not found.
+        """
+        # Get the account from the authenticated context
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
+            )
+        account_aid = account.aid
+
+        form = req.get_media()
+
+        body = {}
+        vcp: bytes | None = None
+        ixn: bytes | None= None
+        for part in form:
+            if part.name == "body":
+                if part.content_type.startswith("application/json"):
+                    json_data = part.get_media()
+                    if isinstance(json_data, dict):
+                        body.update(json_data)
+                    else:
+                        raise falcon.HTTPBadRequest(
+                            title="Bad Request",
+                            description="The 'body' part must be a JSON object.",
+                        )
+                else:
+                    raise falcon.HTTPBadRequest(
+                        title="Bad Request",
+                        description="The 'body' part must have content-type application/json.",
+                    )
+            elif part.name == "vcp":
+                vcp = part.get_data()
+            elif part.name == "ixn":
+                ixn = part.get_data()
+            else:
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"Unexpected form part '{part.name}'.",
+                )
+
+        if not vcp:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'vcp' part is required."
+            )
+        if not ixn:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn' part is required."
+            )
+
+        try:
+            multisig = self.service.create_registry(
+                multisig_id=multisig_id,
+                account_aid=account_aid,
+                vcp=bytes(vcp),
+                ixn=bytes(ixn),
+                body=body,
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except PermissionError as e:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description=str(e),
+            )
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_201
         resp.content_type = "application/json"
         resp.media = _serialize_multisig(multisig)
 
