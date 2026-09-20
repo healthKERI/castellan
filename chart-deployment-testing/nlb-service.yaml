@@ -1,12 +1,12 @@
 # Standalone Service that provisions a real AWS NLB routed to castellan-rack's
-# pods, deliberately OUTSIDE the Helm release -- see testing/README.md's
+# pods, deliberately OUTSIDE the Helm release -- see chart-deployment-testing/README.md's
 # "Reachability test" section for why. `helm uninstall`/`helm install` cycles
 # of the `castellan` release never touch this, so its NLB (and hostname)
 # survive any number of app reinstalls, mirroring how a real deployer's
 # ingress is infrastructure they own separately from this chart.
 #
-# Apply once: kubectl apply -f charts/castellan/testing/nlb-service.yaml
-# Tear down independently of the app: kubectl delete -f charts/castellan/testing/nlb-service.yaml
+# Apply once: kubectl apply -f chart-deployment-testing/nlb-service.yaml
+# Tear down independently of the app: kubectl delete -f chart-deployment-testing/nlb-service.yaml
 apiVersion: v1
 kind: Service
 metadata:

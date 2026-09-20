@@ -11,8 +11,8 @@ already have:
   label selector — not through this chart's Service.
 
 It does not cover installing the chart on a disposable test cluster from scratch — see
-`testing/README.md` for that (EKS-specific, throwaway Mongo, etc). This doc is about the
-`values.yaml` fields you need to fill in for a real pilot.
+`../../chart-deployment-testing/README.md` for that (EKS-specific, throwaway Mongo, etc). This
+doc is about the `values.yaml` fields you need to fill in for a real pilot.
 
 ## What gets deployed
 
@@ -99,9 +99,10 @@ have your own external load balancer routing to the pods directly:
   app.kubernetes.io/instance: <your-release-name>
   app.kubernetes.io/component: castellan
   ```
-  targeting port `5923` (or whatever you set `ports.rack` to). `testing/nlb-service.yaml` is a
-  worked example of exactly this pattern (AWS-specific, but the shape — a standalone Service with
-  this selector, applied outside Helm — is what you're replicating with your own LB).
+  targeting port `5923` (or whatever you set `ports.rack` to). `../../chart-deployment-testing/
+  nlb-service.yaml` is a worked example of exactly this pattern (AWS-specific, but the shape — a
+  standalone Service with this selector, applied outside Helm — is what you're replicating with
+  your own LB).
 - Set `rack.externalLocation.host` to the hostname your load balancer already answers to (its DNS
   name, or a CNAME/A record you've pointed at it). Leave `rack.externalLocation.port` empty
   unless your external endpoint listens on a different port than `ports.rack` — it defaults to

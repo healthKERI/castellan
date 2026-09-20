@@ -1,0 +1,18 @@
+image:
+  repository: "healthkeri/witness-hk"
+  tag: "v1.3.6-dev"
+
+replicaCount: 3
+
+ingress:
+  enabled: true
+  className: "nginx"
+  tls:
+    enabled: true
+    secretName: witness-wildcard-tls
+
+# baseDomain is intentionally left unset here -- it depends on the sslip.io
+# magic-DNS hostname derived from ingress-nginx's NLB IP, which only exists
+# after that NLB is provisioned. Set at install time with
+# --set baseDomain="$BASE_DOMAIN" -- see chart-deployment-testing/README.md's
+# "Spin up" section.
