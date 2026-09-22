@@ -50,6 +50,7 @@ class UploadedIdentifier(Document):
     )  # human-readable alias (unique across castellan)
     oobi = StringField(default="")  # OOBI URL for peer resolution
     created_at = DateTimeField(default=datetime.now)
+    key_state = DictField(required=False)
 
     meta = {
         "indexes": ["alias", "aid"],
@@ -69,6 +70,16 @@ class MultisigMember(EmbeddedDocument):
     current_signature = StringField(required=False)
     current_lead = BooleanField(default=False)
 
+class Witness(EmbeddedDocument):
+    witness_aid = StringField(required=True)
+    witness_alias = StringField(required=True)
+    witness_oobi = StringField(required=True)
+
+class Witnesses(EmbeddedDocument):
+    adds = ListField(EmbeddedDocumentField(Witness), required=False)
+    cuts = ListField(StringField(), required=False)
+    threshold = IntField(required=False)
+
 
 class MultisigIdentifier(UploadedIdentifier):
     """A single multisig KERI identifier uploaded by a whisper instance."""
@@ -78,22 +89,23 @@ class MultisigIdentifier(UploadedIdentifier):
     rotation_threshold = IntField(required=False)
     current_event = DictField(required=False)
     current_metadata = DictField(required=False)
-    key_state = DictField(required=False)
     vcp = DictField(required=False)  # Registry inception event
+    witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
+    witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
 
 
 class IdentifierService:
     """Service for storing and retrieving castellan-uploaded identifiers."""
 
     def __init__(
-        self,
-        account_service,
-        registry_service,
-        kelSvc=None,
-        parser=None,
-        kvy=None,
-        hby=None,
-        castellan_hab=None,
+            self,
+            account_service,
+            registry_service,
+            kelSvc=None,
+            parser=None,
+            kvy=None,
+            hby=None,
+            castellan_hab=None,
     ):
         self.account_service = account_service
         self.kelSvc = kelSvc
@@ -104,7 +116,7 @@ class IdentifierService:
         self.castellan_hab = castellan_hab
 
     def upload(
-        self, aid: str, alias: str, kel: bytes, oobi: str = ""
+            self, aid: str, alias: str, kel: bytes, oobi: str = ""
     ) -> "UploadedIdentifier":
         """
         Store an identifier uploaded by a whisper instance.
@@ -154,7 +166,7 @@ class IdentifierService:
                 if self.hby is not None and self.castellan_hab is not None:
                     group_hab = self.hby.habs.get(aid)
                     if group_hab is not None and isinstance(
-                        group_hab, habbing.GroupHab
+                            group_hab, habbing.GroupHab
                     ):
                         role_msgs = group_hab.makeEndRole(
                             eid=self.castellan_hab.pre, role=kering.Roles.mailbox
@@ -168,18 +180,20 @@ class IdentifierService:
 
         if (identifier := UploadedIdentifier.objects(alias=alias).first()) is None:
             identifier = UploadedIdentifier(aid=aid, alias=alias, oobi=oobi)
-            identifier.save()
+
+        identifier.key_state = asdict(self.hby.kvy.kevers[aid].state())
+        identifier.save()
 
         logger.info(f"Uploaded identifier aid={aid} alias={alias}")
 
         return identifier
 
     def list_identifiers(
-        self,
-        page: int = 0,
-        page_size: int = 20,
-        filter_term: str | None = None,
-        order: list[str] | None = None,
+            self,
+            page: int = 0,
+            page_size: int = 20,
+            filter_term: str | None = None,
+            order: list[str] | None = None,
     ) -> tuple[list["UploadedIdentifier"], int, int]:
         """
         List uploaded identifiers with pagination/filter/sort, mirroring
@@ -279,10 +293,10 @@ class IdentifierService:
 
     @staticmethod
     def list_multisig_identifiers(
-        page: int = 0,
-        page_size: int = 20,
-        filter_term: str | None = None,
-        order: list[str] | None = None,
+            page: int = 0,
+            page_size: int = 20,
+            filter_term: str | None = None,
+            order: list[str] | None = None,
     ) -> tuple[list["MultisigIdentifier"], int, int]:
         """
         List multisig identifiers with pagination/filter/sort.
@@ -314,21 +328,21 @@ class IdentifierService:
         return items, total, num_pages
 
     def create_multisig_identifier(
-        self,
-        alias: str,
-        accounts: List[Tuple[str, str, str]],
-        aid: str,
-        kel: bytes,
-        signing_threshold: Optional[int] = None,
-        rotation_threshold: Optional[int] = None,
+            self,
+            alias: str,
+            accounts: List[Tuple[str, str, str]],
+            aid: str,
+            kel: bytes,
+            signing_threshold: Optional[int] = None,
+            rotation_threshold: Optional[int] = None,
     ) -> MultisigIdentifier:
         """Creates a new multisig identifier."""
 
         members = list()
         for (
-            account_aid,
-            member_signing_threshold,
-            member_rotation_threshold,
+                account_aid,
+                member_signing_threshold,
+                member_rotation_threshold,
         ) in accounts:
             account = self.account_service.get_account(account_aid)
             if account is None:
@@ -372,7 +386,7 @@ class IdentifierService:
                 if self.hby is not None and self.castellan_hab is not None:
                     group_hab = self.hby.habs.get(aid)
                     if group_hab is not None and isinstance(
-                        group_hab, habbing.GroupHab
+                            group_hab, habbing.GroupHab
                     ):
                         role_msgs = group_hab.makeEndRole(
                             eid=self.castellan_hab.pre, role=kering.Roles.mailbox
@@ -389,7 +403,7 @@ class IdentifierService:
         return multisig_identifier
 
     def join_multisig(
-        self, multisig_id: str, account_aid: str, member_aid: str, kel: bytes
+            self, multisig_id: str, account_aid: str, member_aid: str, kel: bytes
     ) -> MultisigIdentifier:
         """
         Allow a member to join a multisig identifier by providing their member AID and KEL.
@@ -476,7 +490,7 @@ class IdentifierService:
         return multisig
 
     def submit_multisig_inception(
-        self, multisig_id: str, account_aid: str, data: dict, icp: bytes
+            self, multisig_id: str, account_aid: str, data: dict, icp: bytes
     ) -> MultisigIdentifier:
         """
         Record that a member has submitted their signature for a multisig identifier.
@@ -548,8 +562,8 @@ class IdentifierService:
 
         # This was the deciding signature and the event is now committed.
         if (
-            multisig_aid in self.kvy.kevers
-            and inception_event.sner.sn == self.kvy.kevers[multisig_aid].sner.num
+                multisig_aid in self.kvy.kevers
+                and inception_event.sner.sn == self.kvy.kevers[multisig_aid].sner.num
         ):
             multisig.key_state = asdict(self.hby.kvy.kevers[multisig_aid].state())
             multisig.current_event = None
@@ -575,7 +589,7 @@ class IdentifierService:
         return multisig
 
     def create_registry(
-        self, multisig_id: str, account_aid: str, vcp: bytes, ixn: bytes, body: dict
+            self, multisig_id: str, account_aid: str, vcp: bytes, ixn: bytes, body: dict
     ) -> MultisigIdentifier:
         """
         Create a credential registry for a multisig identifier.
@@ -677,7 +691,7 @@ class IdentifierService:
             # Update the multisig with the registry events
             multisig.current_event = ixn_event.ked
             multisig.members[member_idx].current_signature = ixn[
-                ixn_event.size :
+                ixn_event.size:
             ].decode("utf-8")
             multisig.members[member_idx].current_lead = True
             multisig.current_metadata = dict(registry_name=registry_name)
@@ -689,3 +703,108 @@ class IdentifierService:
             )
 
         return multisig
+
+    @staticmethod
+    def set_witness_rotate(
+            multisig_id: str,
+            adds: list[dict],
+            cuts: list[str],
+            witness_threshold: int,
+    ) -> MultisigIdentifier:
+        """
+        Set the witness rotation configuration for a multisig identifier.
+
+        Args:
+            multisig_id: The ID of the multisig identifier.
+            adds: List of witness dicts with keys: witness_aid, witness_alias, witness_oobi
+            cuts: List of witness AIDs to remove.
+            witness_threshold: The new witness threshold.
+
+        Returns:
+            The updated MultisigIdentifier document.
+
+        Raises:
+            NotFoundError: If the multisig identifier is not found.
+            ValueError: If current_event is not empty (operation in progress).
+        """
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        if multisig.current_event:
+            raise ValueError(
+                "Cannot set witness rotate while an operation is in progress"
+            )
+
+        witness_adds = [
+            Witness(
+                witness_aid=w["aid"],
+                witness_alias=w["alias"],
+                witness_oobi=w["oobi"],
+            )
+            for w in adds
+        ]
+
+        witnesses = Witnesses(
+            adds=witness_adds,
+            cuts=cuts,
+            threshold=witness_threshold,
+        )
+
+        multisig.witness_rotate = witnesses
+        multisig.save()
+
+        logger.info(f"Set witness rotate for multisig {multisig_id}")
+
+        return multisig
+
+    def complete_witness_rotate(self, multisig_id, rot: bytes, witness_data: list[dict]):
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        if self.parser is None or self.kvy is None:
+            raise RuntimeError(
+                "IdentifierService requires parser and kvy to process KEL"
+            )
+
+        serder = SerderKERI(raw=bytes(rot))
+        sn = serder.sn
+
+        try:
+            self.parser.parse(ims=bytearray(rot), kvy=self.kvy, local=True)
+            self.kvy.processEscrows()
+
+            if int(self.kvy.kevers[multisig.aid].state().s, 16) != sn:
+                raise ValueError(f"Invalid witness rotate event for multisig {multisig_id}")
+
+            self.kelSvc.capture_kel(multisig.aid)
+            self.kelSvc.scan_for_delegates(multisig.aid)
+
+        except Exception as e:
+            raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+
+        multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
+        multisig.current_event = None
+        multisig.witness_rotate = None
+
+        for member in multisig.members:
+            member.public_key = None
+            member.current_signature = None
+            member.current_lead = False
+
+        multisig.witnesses =  [
+            Witness(
+                witness_aid=w["aid"],
+                witness_alias=w["alias"],
+                witness_oobi=w["oobi"],
+            )
+            for w in witness_data
+        ]
+
+        multisig.save()
+
+        return multisig
+

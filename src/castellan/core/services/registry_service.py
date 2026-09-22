@@ -24,9 +24,7 @@ class Registry(Document):
     """Credential registry document."""
 
     registry_pre = StringField(required=True, unique=True)  # Registry prefix/identifier
-    registry_said = StringField(
-        required=True, unique=True
-    )  # Self-addressing identifier
+    registry_said = StringField(required=True, unique=True)  # Self-addressing identifier
     registry_name = StringField(required=True)  # Human-readable name
     issuer_aid = StringField(required=True)  # AID of the issuer
     created_at = DateTimeField(default=datetime.now)

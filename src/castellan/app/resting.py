@@ -15,6 +15,8 @@ from castellan.app.api.identifier import (
     MultisigIdentifierResourceEnd,
     MultisigIdentifierSignatureCollectionEnd,
     MultisigIdentifierRegistryCollectionEnd,
+    MultisigIdentifierWitnessCollectionEnd,
+    MultisigIdentifierWitnessResourceEnd,
 )
 from castellan.app.api.issued_credential import (
     IssuedCredentialCollectionEnd,
@@ -234,6 +236,14 @@ def setup(
     app.add_route(
         "/multisig/identifiers/{multisig_id}/registries",
         MultisigIdentifierRegistryCollectionEnd(identifier_svc),
+    )
+    app.add_route(
+        "/multisig/identifiers/{multisig_id}/witnesses",
+        MultisigIdentifierWitnessCollectionEnd(identifier_svc),
+    )
+    app.add_route(
+        "/multisig/identifiers/{multisig_id}/witnesses/rotate",
+        MultisigIdentifierWitnessResourceEnd(identifier_svc),
     )
 
     # JSON Schema management routes
