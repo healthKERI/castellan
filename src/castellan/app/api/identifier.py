@@ -69,6 +69,16 @@ def _serialize_multisig(identifier) -> dict:
         identifier.current_event if hasattr(identifier, "current_event") else {}
     )
     data["vcp"] = identifier.vcp if hasattr(identifier, "vcp") else {}
+    data["witness_rotate"] = (
+        _serialize_witnesses(identifier.witness_rotate)
+        if hasattr(identifier, "witness_rotate") and identifier.witness_rotate
+        else None
+    )
+    data["witnesses"] = [
+        _serialize_witness(witness)
+        for witness in identifier.witnesses
+        if identifier.witnesses
+    ]
 
     return data
 
@@ -84,6 +94,24 @@ def _serialize_member(member):
     }
 
     return data
+
+
+def _serialize_witness(witness) -> dict:
+    return {
+        "witness_aid": witness.witness_aid,
+        "witness_alias": witness.witness_alias,
+        "witness_oobi": witness.witness_oobi,
+    }
+
+
+def _serialize_witnesses(witnesses) -> dict | None:
+    if not witnesses:
+        return None
+    return {
+        "adds": [_serialize_witness(w) for w in (witnesses.adds or [])],
+        "cuts": witnesses.cuts or [],
+        "threshold": witnesses.threshold,
+    }
 
 
 class IdentifierCollectionEnd:
@@ -793,3 +821,186 @@ class IdentifierResourceEnd:
             )
 
         resp.status = falcon.HTTP_204
+
+
+class MultisigIdentifierWitnessCollectionEnd:
+    """Handles POST /multisig/identifiers/{multisig_id}/witnesses — set witness rotation."""
+
+    def __init__(self, identifierSvc):
+        self.service = identifierSvc
+
+    def on_post(self, req, resp, multisig_id):
+        """
+        Set witness rotation configuration for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (application/json):
+            {
+              "adds": [
+                {"witness_aid": "...", "witness_alias": "...", "witness_url": "..."},
+                ...
+              ],
+              "cuts": ["witness_aid_1", "witness_aid_2"],
+              "witness_threshold": 2
+            }
+
+        Response (200): updated MultisigIdentifier document.
+        Response (400): if current_event is not empty or validation fails.
+        Response (404): if the multisig identifier is not found.
+        """
+        body = req.get_media()
+
+        adds = body.get("adds")
+        cuts = body.get("cuts")
+        witness_threshold = body.get("witness_threshold")
+
+        # Validate adds
+        if adds is None or not isinstance(adds, list):
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description="'adds' is required and must be a list.",
+            )
+        for idx, add in enumerate(adds):
+            if not isinstance(add, dict):
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"'adds[{idx}]' must be an object.",
+                )
+            if "aid" not in add:
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"'adds[{idx}].aid' is required.",
+                )
+            if "alias" not in add:
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"'adds[{idx}].alias' is required.",
+                )
+            if "oobi" not in add:
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"'adds[{idx}].oobi' is required.",
+                )
+
+        # Validate cuts
+        if cuts is None or not isinstance(cuts, list):
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description="'cuts' is required and must be a list.",
+            )
+
+        # Validate witness_threshold
+        if witness_threshold is None or not isinstance(witness_threshold, int):
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description="'witness_threshold' is required and must be an integer.",
+            )
+        if witness_threshold < 0:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description="'witness_threshold' must be >= 0.",
+            )
+
+        try:
+            multisig = self.service.set_witness_rotate(
+                multisig_id=multisig_id,
+                adds=adds,
+                cuts=cuts,
+                witness_threshold=witness_threshold,
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_200
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+    def on_put(self, req, resp, multisig_id):
+        """
+        Complete a witness rotation for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (multipart/form-data):
+            rot  — binary part: raw CESR-encoded rotation event bytes
+            data — JSON part: witness data to store after rotation
+
+        Response (200): updated MultisigIdentifier document.
+        Response (400): if required parts are missing or parse failure.
+        Response (404): if the multisig identifier is not found.
+        """
+        form = req.get_media()
+
+        data = {}
+        rot: bytes | None = None
+        for part in form:
+            if part.name == "data":
+                if part.content_type.startswith("application/json"):
+                    json_data = part.get_media()
+                    if isinstance(json_data, dict):
+                        data.update(json_data)
+                    else:
+                        raise falcon.HTTPBadRequest(
+                            title="Bad Request",
+                            description="The 'data' part must be a JSON object.",
+                        )
+                else:
+                    raise falcon.HTTPBadRequest(
+                        title="Bad Request",
+                        description="The 'data' part must have content-type application/json.",
+                    )
+            elif part.name == "rot":
+                rot = part.get_data()
+            else:
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"Unexpected form part '{part.name}'.",
+                )
+
+        if not rot:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'rot' part is required."
+            )
+
+        try:
+            multisig = self.service.complete_witness_rotate(
+                multisig_id=multisig_id,
+                rot=bytes(rot),
+                witness_data=data.get("witnesses", []),
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_200
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+
+class MultisigIdentifierWitnessResourceEnd:
+    """Handles POST /multisig/identifiers/{multisig_id}/witnesses/rotate — complete witness rotation."""
+
+    def __init__(self, identifierSvc):
+        self.service = identifierSvc

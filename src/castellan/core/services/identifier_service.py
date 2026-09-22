@@ -50,6 +50,7 @@ class UploadedIdentifier(Document):
     )  # human-readable alias (unique across castellan)
     oobi = StringField(default="")  # OOBI URL for peer resolution
     created_at = DateTimeField(default=datetime.now)
+    key_state = DictField(required=False)
 
     meta = {
         "indexes": ["alias", "aid"],
@@ -70,6 +71,18 @@ class MultisigMember(EmbeddedDocument):
     current_lead = BooleanField(default=False)
 
 
+class Witness(EmbeddedDocument):
+    witness_aid = StringField(required=True)
+    witness_alias = StringField(required=True)
+    witness_oobi = StringField(required=True)
+
+
+class Witnesses(EmbeddedDocument):
+    adds = ListField(EmbeddedDocumentField(Witness), required=False)
+    cuts = ListField(StringField(), required=False)
+    threshold = IntField(required=False)
+
+
 class MultisigIdentifier(UploadedIdentifier):
     """A single multisig KERI identifier uploaded by a whisper instance."""
 
@@ -78,8 +91,9 @@ class MultisigIdentifier(UploadedIdentifier):
     rotation_threshold = IntField(required=False)
     current_event = DictField(required=False)
     current_metadata = DictField(required=False)
-    key_state = DictField(required=False)
     vcp = DictField(required=False)  # Registry inception event
+    witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
+    witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
 
 
 class IdentifierService:
@@ -168,7 +182,9 @@ class IdentifierService:
 
         if (identifier := UploadedIdentifier.objects(alias=alias).first()) is None:
             identifier = UploadedIdentifier(aid=aid, alias=alias, oobi=oobi)
-            identifier.save()
+
+        identifier.key_state = asdict(self.hby.kvy.kevers[aid].state())
+        identifier.save()
 
         logger.info(f"Uploaded identifier aid={aid} alias={alias}")
 
@@ -687,5 +703,113 @@ class IdentifierService:
             logger.info(
                 f"Created registry for multisig {multisig_id} by account {account_aid}"
             )
+
+        return multisig
+
+    @staticmethod
+    def set_witness_rotate(
+        multisig_id: str,
+        adds: list[dict],
+        cuts: list[str],
+        witness_threshold: int,
+    ) -> MultisigIdentifier:
+        """
+        Set the witness rotation configuration for a multisig identifier.
+
+        Args:
+            multisig_id: The ID of the multisig identifier.
+            adds: List of witness dicts with keys: witness_aid, witness_alias, witness_oobi
+            cuts: List of witness AIDs to remove.
+            witness_threshold: The new witness threshold.
+
+        Returns:
+            The updated MultisigIdentifier document.
+
+        Raises:
+            NotFoundError: If the multisig identifier is not found.
+            ValueError: If current_event is not empty (operation in progress).
+        """
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        if multisig.current_event:
+            raise ValueError(
+                "Cannot set witness rotate while an operation is in progress"
+            )
+
+        witness_adds = [
+            Witness(
+                witness_aid=w["aid"],
+                witness_alias=w["alias"],
+                witness_oobi=w["oobi"],
+            )
+            for w in adds
+        ]
+
+        witnesses = Witnesses(
+            adds=witness_adds,
+            cuts=cuts,
+            threshold=witness_threshold,
+        )
+
+        multisig.witness_rotate = witnesses
+        multisig.save()
+
+        logger.info(f"Set witness rotate for multisig {multisig_id}")
+
+        return multisig
+
+    def complete_witness_rotate(
+        self, multisig_id, rot: bytes, witness_data: list[dict]
+    ):
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        if self.parser is None or self.kvy is None:
+            raise RuntimeError(
+                "IdentifierService requires parser and kvy to process KEL"
+            )
+
+        serder = SerderKERI(raw=bytes(rot))
+        sn = serder.sn
+
+        try:
+            self.parser.parse(ims=bytearray(rot), kvy=self.kvy, local=True)
+            self.kvy.processEscrows()
+
+            if int(self.kvy.kevers[multisig.aid].state().s, 16) != sn:
+                raise ValueError(
+                    f"Invalid witness rotate event for multisig {multisig_id}"
+                )
+
+            self.kelSvc.capture_kel(multisig.aid)
+            self.kelSvc.scan_for_delegates(multisig.aid)
+
+        except Exception as e:
+            raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+
+        multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
+        multisig.current_event = None
+        multisig.witness_rotate = None
+
+        for member in multisig.members:
+            member.public_key = None
+            member.current_signature = None
+            member.current_lead = False
+
+        multisig.witnesses = [
+            Witness(
+                witness_aid=w["aid"],
+                witness_alias=w["alias"],
+                witness_oobi=w["oobi"],
+            )
+            for w in witness_data
+        ]
+
+        multisig.save()
 
         return multisig
