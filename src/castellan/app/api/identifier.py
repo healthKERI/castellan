@@ -74,7 +74,11 @@ def _serialize_multisig(identifier) -> dict:
         if hasattr(identifier, "witness_rotate") and identifier.witness_rotate
         else None
     )
-    data['witnesses'] = [_serialize_witness(witness) for witness in identifier.witnesses if identifier.witnesses]
+    data["witnesses"] = [
+        _serialize_witness(witness)
+        for witness in identifier.witnesses
+        if identifier.witnesses
+    ]
 
     return data
 
@@ -975,7 +979,7 @@ class MultisigIdentifierWitnessCollectionEnd:
             multisig = self.service.complete_witness_rotate(
                 multisig_id=multisig_id,
                 rot=bytes(rot),
-                witness_data=data.get('witnesses', []),
+                witness_data=data.get("witnesses", []),
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
@@ -995,10 +999,8 @@ class MultisigIdentifierWitnessCollectionEnd:
         resp.media = _serialize_multisig(multisig)
 
 
-
 class MultisigIdentifierWitnessResourceEnd:
     """Handles POST /multisig/identifiers/{multisig_id}/witnesses/rotate — complete witness rotation."""
 
     def __init__(self, identifierSvc):
         self.service = identifierSvc
-
