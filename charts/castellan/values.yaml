@@ -64,6 +64,15 @@ castellanOobi:
     annotations: {}
     tls: []
 
+oobi:
+# Same-pod network namespace: castellan-oobi reaches castellan over
+# loopback, not the compose-era DNS name "castellan".
+  externalLocation:
+    # REQUIRED: real, externally-resolvable host for the OOBI AID's HTTP
+    # location, resolved by external KERI parties via GET /oobi/server.
+    host: ""
+
+
 persistence:
   storageClassName: ""
   accessMode: ReadWriteOnce

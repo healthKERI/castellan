@@ -20,6 +20,16 @@ else
   echo "'castellan' AID already exists; skipping."
 fi
 
+if ! kli aid --name castellan_oobi --alias castellan_oobi >/dev/null 2>&1; then
+  echo "Provisioning 'castellan_oobi' AID (credential server identity)..."
+  kli incept --name castellan_oobi --alias castellan_oobi --icount 1 --isith "1" --ncount 1 --nsith "1" --toad 0
+  CASTELLAN_OOBI_AID=$(kli aid --name castellan_oobi --alias castellan_oobi)
+  kli ends add --name castellan_oobi --alias castellan_oobi --role controller --eid "${CASTELLAN_OOBI_AID}"
+  kli location add --name castellan_oobi --alias castellan_oobi --url "http://${CASTELLAN_OOBI_LOCATION_HOST:-castellan-rack}:${CASTELLAN_OOBI_PORT}" --eid "${CASTELLAN_OOBI_AID}"
+else
+  echo "'castellan_oobi' AID already exists; skipping."
+fi
+
 if ! kli aid --name castellan --alias rack >/dev/null 2>&1; then
   echo "Provisioning 'rack' AID (load balancer identity)..."
   kli incept --name castellan --alias rack --transferable --icount 1 --isith "1" --ncount 1 --nsith "1" --toad 0

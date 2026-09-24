@@ -36,6 +36,7 @@ It does not cover installing the chart on a disposable test cluster from scratch
 | `image.rack.repository` / `image.rack.tag` | Where to pull the `castellan-rack` image from. Empty by default. |
 | `mongodb.connectionString.secretName` | Name of a **pre-existing** Secret in the release namespace holding your Mongo connection string. You create this yourself against your own Mongo instance (see below) — the chart never creates it. |
 | `rack.externalLocation.host` | The externally-resolvable hostname/domain for `castellan-rack`'s TCP endpoint — the one your own L4 load balancer already answers to. This gets baked into the KERI keystore on first install and is effectively **immutable** after that (see below). |
+| `oobi.externalLocation.host` | The externally-resolvable hostname/domain for `castellan-oobi`'s HTTP endpoint — the one your own L4 load balancer already answers to. This gets baked into the KERI keystore on first install and is effectively **immutable** after that (see below). |
 
 If any of these are missing, `helm install`/`helm template` fails fast with a `required(...)`
 error rather than deploying something broken.

@@ -35,6 +35,8 @@ spec:
             {{- include "castellan.mongoEnv" . | nindent 12 }}
             - name: CASTELLAN_RACK_LOCATION_HOST
               value: {{ required "rack.externalLocation.host is required" .Values.rack.externalLocation.host | quote }}
+            - name: CASTELLAN_OOBI_LOCATION_HOST
+              value: {{ required "oobi.externalLocation.host is required" .Values.oobi.externalLocation.host | quote }}
           volumeMounts:
             - name: keri-data
               mountPath: /usr/local/var/keri
