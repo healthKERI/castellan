@@ -39,6 +39,7 @@ def _serialize_identifier(identifier) -> dict:
         "aid": identifier.aid,
         "alias": identifier.alias,
         "oobi": identifier.oobi or "",
+        "mailbox": identifier.mailbox,
         "created_at": (
             identifier.created_at.isoformat() if identifier.created_at else None
         ),
@@ -69,6 +70,11 @@ def _serialize_multisig(identifier) -> dict:
         identifier.current_event if hasattr(identifier, "current_event") else {}
     )
     data["vcp"] = identifier.vcp if hasattr(identifier, "vcp") else {}
+    data["registry"] = (
+        _serialize_registry(identifier.registry)
+        if hasattr(identifier, "registry")
+        else {}
+    )
     data["witness_rotate"] = (
         _serialize_witnesses(identifier.witness_rotate)
         if hasattr(identifier, "witness_rotate") and identifier.witness_rotate
@@ -79,6 +85,16 @@ def _serialize_multisig(identifier) -> dict:
         for witness in identifier.witnesses
         if identifier.witnesses
     ]
+
+    return data
+
+
+def _serialize_registry(registry):
+    data = {
+        "registry_pre": registry.registry_pre,
+        "registry_said": registry.registry_said,
+        "registry_name": registry.registry_name,
+    }
 
     return data
 
@@ -655,6 +671,8 @@ class MultisigIdentifierRegistryCollectionEnd:
         body = {}
         vcp: bytes | None = None
         ixn: bytes | None = None
+        mailbox: bytes | None = None
+        registrar: bytes | None = None
         for part in form:
             if part.name == "body":
                 if part.content_type.startswith("application/json"):
@@ -675,6 +693,10 @@ class MultisigIdentifierRegistryCollectionEnd:
                 vcp = part.get_data()
             elif part.name == "ixn":
                 ixn = part.get_data()
+            elif part.name == "mailbox":
+                mailbox = part.get_data()
+            elif part.name == "registrar":
+                registrar = part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -689,6 +711,14 @@ class MultisigIdentifierRegistryCollectionEnd:
             raise falcon.HTTPBadRequest(
                 title="Bad Request", description="'ixn' part is required."
             )
+        if not mailbox:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'mailbox' part is required."
+            )
+        if not registrar:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'registrar' part is required."
+            )
 
         try:
             multisig = self.service.create_registry(
@@ -696,6 +726,8 @@ class MultisigIdentifierRegistryCollectionEnd:
                 account_aid=account_aid,
                 vcp=bytes(vcp),
                 ixn=bytes(ixn),
+                mailbox=bytes(mailbox),
+                registrar=bytes(registrar),
                 body=body,
             )
         except NotFoundError as e:

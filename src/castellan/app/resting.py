@@ -6,7 +6,18 @@ Falcon application factory and service wiring for the castellan credential serve
 """
 
 import falcon
+from hio.base import doing
+from hio.core import http
+from hio.help import decking
+from keri import kering
+from keri.app import indirecting, oobiing
+from keri.core import eventing, parsing, routing
+from keri.help import ogler
+from keri.vdr import credentialing, verifying
+from keri.vdr.eventing import Tevery
+
 from castellan.app.api.account import AccountCollectionEnd, AccountResourceEnd
+from castellan.app.api.health import HealthEnd
 from castellan.app.api.identifier import (
     IdentifierCollectionEnd,
     IdentifierKelEnd,
@@ -27,8 +38,6 @@ from castellan.app.api.json_schema import (
     JsonSchemaResourceEnd,
 )
 from castellan.app.api.message import MessageCollectionEnd, MessageResourceEnd
-from castellan.app.api.schema_field_tracking import SchemaFieldTrackingEnd
-from castellan.app.api.health import HealthEnd
 from castellan.app.api.received_credential import (
     ReceivedCredentialCollectionEnd,
     ReceivedCredentialResourceEnd,
@@ -37,20 +46,7 @@ from castellan.app.api.registrar import (
     RegistrarOobiEnd,
     RegistrarTELEnd,
 )
-from castellan.app.api.registry import (
-    RegistryCollectionEnd,
-    RegistryResourceEnd,
-)
-from hio.base import doing
-from hio.core import http
-from hio.help import decking
-from keri import kering
-from keri.app import indirecting, oobiing
-from keri.core import eventing, parsing, routing
-from keri.help import ogler
-from keri.vdr import credentialing, verifying
-from keri.vdr.eventing import Tevery
-
+from castellan.app.api.schema_field_tracking import SchemaFieldTrackingEnd
 from castellan.core.authing import Authenticater, SignatureValidationComponent
 from castellan.core.basing import databaseInit
 from castellan.core.haberying import Hby
@@ -60,15 +56,13 @@ from castellan.core.services import (
     MessageService,
     IdentifierService,
 )
-
 from castellan.core.services.account_service import AccountService
 from castellan.core.services.key_event_log_service import KeyEventLogService
 from castellan.core.services.registrar_service import RegistrarService
-from castellan.core.services.schema_service import SchemaService
 from castellan.core.services.schema_field_tracking_service import (
     SchemaFieldTrackingService,
 )
-from castellan.core.services.registry_service import RegistryService
+from castellan.core.services.schema_service import SchemaService
 
 logger = ogler.getLogger()
 
@@ -163,10 +157,8 @@ def setup(
     )
 
     msg_svc = MessageService()
-    registry_svc = RegistryService()
     identifier_svc = IdentifierService(
         account_service=account_svc,
-        registry_service=registry_svc,
         kelSvc=kel_svc,
         parser=parser,
         kvy=kvy,
@@ -258,10 +250,6 @@ def setup(
     # Account management routes
     app.add_route("/accounts", AccountCollectionEnd(account_svc))
     app.add_route("/accounts/{aid}", AccountResourceEnd(account_svc))
-
-    # Registry routes
-    app.add_route("/registries", RegistryCollectionEnd(registry_svc))
-    app.add_route("/registries/{registry_pre}", RegistryResourceEnd(registry_svc))
 
     # Health check route (authenticated — verifies the signed connection works
     # end-to-end, not just that the process is alive)

@@ -51,6 +51,8 @@ class UploadedIdentifier(Document):
     oobi = StringField(default="")  # OOBI URL for peer resolution
     created_at = DateTimeField(default=datetime.now)
     key_state = DictField(required=False)
+    mailbox = BooleanField(default=False)
+    registrar = BooleanField(default=False)
 
     meta = {
         "indexes": ["alias", "aid"],
@@ -58,6 +60,15 @@ class UploadedIdentifier(Document):
         "collection": "uploaded_identifier",
         "allow_inheritance": True,
     }
+
+
+class Registry(EmbeddedDocument):
+    """Credential registry document."""
+
+    registry_pre = StringField(required=True)  # Registry prefix/identifier
+    registry_said = StringField(required=True)
+    registry_name = StringField(required=True)  # Human-readable name
+    created_at = DateTimeField(default=datetime.now)
 
 
 class MultisigMember(EmbeddedDocument):
@@ -92,6 +103,9 @@ class MultisigIdentifier(UploadedIdentifier):
     current_event = DictField(required=False)
     current_metadata = DictField(required=False)
     vcp = DictField(required=False)  # Registry inception event
+    mbx = DictField(required=False)
+    rgr = DictField(required=False)
+    registry = EmbeddedDocumentField(Registry, required=False)
     witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
     witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
 
@@ -102,7 +116,6 @@ class IdentifierService:
     def __init__(
         self,
         account_service,
-        registry_service,
         kelSvc=None,
         parser=None,
         kvy=None,
@@ -111,7 +124,6 @@ class IdentifierService:
     ):
         self.account_service = account_service
         self.kelSvc = kelSvc
-        self.registry_service = registry_service
         self.parser = parser
         self.kvy = kvy
         self.hby = hby
@@ -261,7 +273,7 @@ class IdentifierService:
         if self.kelSvc is None:
             return b""
         try:
-            return self.kelSvc.get_kel_stream(aid)
+            return self.kelSvc.get_full_stream(aid)
         except Exception as e:
             logger.warning(f"KEL stream retrieval failed for aid={aid}: {e}")
             return b""
@@ -591,7 +603,14 @@ class IdentifierService:
         return multisig
 
     def create_registry(
-        self, multisig_id: str, account_aid: str, vcp: bytes, ixn: bytes, body: dict
+        self,
+        multisig_id: str,
+        account_aid: str,
+        vcp: bytes,
+        ixn: bytes,
+        mailbox: bytes,
+        registrar: bytes,
+        body: dict,
     ) -> MultisigIdentifier:
         """
         Create a credential registry for a multisig identifier.
@@ -601,6 +620,8 @@ class IdentifierService:
             account_aid: The AID of the account creating the registry.
             vcp: Raw CESR-encoded registry inception event bytes.
             ixn: Raw CESR-encoded interaction event bytes.
+            mailbox: Raw CESR-encoded mailbox event bytes.
+            registrar: Raw CESR-encoded registrar event bytes.
             body: Additional metadata (optional).
 
         Returns:
@@ -619,6 +640,10 @@ class IdentifierService:
             raise ValueError("vcp is required")
         if not ixn:
             raise ValueError("ixn is required")
+        if not mailbox:
+            raise ValueError("mailbox is required")
+        if not registrar:
+            raise ValueError("registrar is required")
         if "name" not in body:
             raise ValueError("registry name is require")
 
@@ -642,7 +667,7 @@ class IdentifierService:
                 f"Account {account_aid} is not authorized to create registry for this multisig"
             )
 
-        # Parse the vcp and ixn events
+        # Parse the all the events
         try:
             vcp_event = SerderKERI(raw=bytes(vcp))
         except Exception as e:
@@ -652,6 +677,15 @@ class IdentifierService:
             ixn_event = SerderKERI(raw=bytes(ixn))
         except Exception as e:
             raise ValueError(f"Failed to parse ixn event: {e}")
+        try:
+            mailbox_event = SerderKERI(raw=bytes(mailbox))
+        except Exception as e:
+            raise ValueError(f"Failed to parse mailbox event: {e}")
+
+        try:
+            registrar_event = SerderKERI(raw=bytes(registrar))
+        except Exception as e:
+            raise ValueError(f"Failed to parse registrar event: {e}")
 
         # Determine if 1 signature is enough and if so complete the event.
         member_aid = multisig.members[member_idx].member_aid
@@ -666,6 +700,9 @@ class IdentifierService:
             try:
                 self.parser.parse(ims=bytearray(ixn), kvy=self.kvy, local=True)
                 self.parser.parse(ims=bytearray(vcp), kvy=self.kvy, local=True)
+                self.parser.parse(ims=bytearray(mailbox), kvy=self.kvy, local=True)
+                self.parser.parse(ims=bytearray(registrar), kvy=self.kvy, local=True)
+
             except Exception as e:
                 raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
 
@@ -676,14 +713,15 @@ class IdentifierService:
                 member.current_signature = None
                 member.current_lead = False
 
-            multisig.save()
-
-            self.registry_service.create_registry(
+            multisig.registry = Registry(
                 registry_pre=vcp_event.pre,
                 registry_said=vcp_event.said,
                 registry_name=registry_name,
-                issuer_aid=multisig.aid,
             )
+            multisig.mailbox = True
+            multisig.registrar = True
+
+            multisig.save()
 
             self.kelSvc.capture_kel(multisig.aid)
             self.kelSvc.scan_for_delegates(multisig.aid)
@@ -698,6 +736,8 @@ class IdentifierService:
             multisig.members[member_idx].current_lead = True
             multisig.current_metadata = dict(registry_name=registry_name)
             multisig.vcp = vcp_event.ked
+            multisig.mbx = mailbox_event.ked
+            multisig.rgr = registrar_event.ked
             multisig.save()
 
             logger.info(
