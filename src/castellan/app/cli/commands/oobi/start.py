@@ -10,6 +10,7 @@ import logging
 
 from hio.base import doing
 from keri import __version__, help
+from keri.app import configing
 
 from castellan.app import oobi_serving
 

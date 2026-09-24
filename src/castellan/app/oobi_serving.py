@@ -9,6 +9,16 @@ balancer with zero shared keystore state.
 """
 
 import falcon
+from hio.core import http
+from hio.help import decking
+from keri.app import indirecting, habbing
+from keri.core import routing, eventing, parsing
+from keri.help import ogler
+from keri.peer import exchanging
+from keri.vdr import credentialing
+from keri.vdr.eventing import Tevery
+
+from castellan.app.api.oobi import OobiDispatchEnd, ServerOobiEnd, CastellanOobiEnd
 from castellan.app.api.public_registrar import (
     RegistrarEnd,
     RegistrarTELEnd,
@@ -16,35 +26,29 @@ from castellan.app.api.public_registrar import (
     RegistrarCredentialSearchEnd,
     RegistrarOOBIEnd,
 )
-from castellan.core.services.registrar_service import RegistrarService
-from hio.core import http
-from hio.help import decking
-from keri.app import indirecting, habbing
-from keri.core import routing
-from keri.help import ogler
-
-from castellan.app.api.oobi import OobiDispatchEnd, ServerOobiEnd
+from castellan.core import httping
 from castellan.core.basing import databaseInit
+from castellan.core.services import MessageService, IdentifierService
+from castellan.core.services.account_service import AccountService
 from castellan.core.services.issued_credential_service import IssuedCredentialService
 from castellan.core.services.key_event_log_service import KeyEventLogService
 from castellan.core.services.received_credential_service import (
     ReceivedCredentialService,
 )
+from castellan.core.services.registrar_service import RegistrarService
 from castellan.core.services.schema_service import SchemaService
 from castellan.core.services.server_service import ServerService
-from keri.vdr import credentialing
-from keri.vdr.eventing import Tevery
 
 logger = ogler.getLogger()
 
 
 def setup(
-    host="0.0.0.0",
-    port=5924,
-    dbhost=None,
-    dbname=None,
-    dbuser=None,
-    dbpass=None,
+        host="0.0.0.0",
+        port=5924,
+        dbhost=None,
+        dbname=None,
+        dbuser=None,
+        dbpass=None
 ):
     """
     Connect to MongoDB, wire the Falcon OOBI app, and return a list of hio
@@ -81,10 +85,42 @@ def setup(
     databaseInit(host=db_host, name=db_name, username=db_user, password=db_pass)
     logger.info(f"Connected to MongoDB at {db_host}@{db_name}")
 
-    kel_svc = KeyEventLogService(hby=None)
+    exchanger = exchanging.Exchanger(hby=hby, handlers=[])
+
+    rvy = routing.Revery(db=hby.db, cues=cues)
+    kvy = eventing.Kevery(db=hby.db,
+                          lax=True,
+                          local=False,
+                          rvy=rvy,
+                          cues=cues)
+    kvy.registerReplyRoutes(router=rvy.rtr)
+    parser = parsing.Parser(framed=True,
+                            kvy=kvy,
+                            exc=exchanger,  # Will set exchanger after creating it
+                            rvy=rvy)
+
+    account_svc = AccountService(
+        kvy=kvy,
+        parser=parser,
+    )
+    msg_svc = MessageService()
+    kel_svc = KeyEventLogService(hby=hby)
+    identifier_svc = IdentifierService(
+        account_service=account_svc,
+        kelSvc=kel_svc,
+        parser=parser,
+        kvy=kvy,
+        hby=hby,
+        castellan_hab=hab,
+    )
+    forward_handler = httping.ForwardHandler(
+        hby=hby, message_service=msg_svc, identifier_service=identifier_svc
+    )
+    exchanger.addHandler(forward_handler)
+
     schema_svc = SchemaService()
-    issued_svc = IssuedCredentialService(hby=None, rgy=None, tvy=None, parser=None)
-    received_svc = ReceivedCredentialService(hby=None, rgy=None, tvy=None, parser=None)
+    issued_svc = IssuedCredentialService(hby=hby, rgy=None, tvy=None, parser=parser)
+    received_svc = ReceivedCredentialService(hby=hby, rgy=None, tvy=None, parser=parser)
     server_svc = ServerService(parser=None, kvy=None, kel_service=kel_svc)
     registrar_svc = RegistrarService(
         hby=hby,
@@ -98,10 +134,13 @@ def setup(
     app = falcon.App(
         middleware=falcon.CORSMiddleware(allow_origins="*", allow_credentials="*")
     )
+
+    httping.load_ends(app=app, identifier_service=identifier_svc, parser=server_svc.parser)
     app.add_route(
         "/oobi/{said}", OobiDispatchEnd(kel_svc, schema_svc, issued_svc, received_svc)
     )
     app.add_route("/oobi/server", ServerOobiEnd(server_svc, kel_svc))
+    app.add_route("/oobi/castellan", CastellanOobiEnd(hab))
 
     app.add_route("/registrar", RegistrarEnd(registrar_svc))
     app.add_route("/registrar/tel", RegistrarTELEnd(registrar_svc))

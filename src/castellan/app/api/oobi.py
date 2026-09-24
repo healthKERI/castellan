@@ -18,6 +18,8 @@ compliant client resolves either resource correctly through hab.resolve().
 """
 
 import falcon
+from keri.kering import Roles
+
 from castellan.core.services.custom.custom_errors import NotFoundError
 from castellan.core.services.key_event_log_service import KeyEventLogService
 from keri.help import ogler
@@ -126,4 +128,30 @@ class ServerOobiEnd:
         resp.status = falcon.HTTP_200
         resp.content_type = "application/json+cesr"
         resp.set_header(OOBI_AID_HEADER, server.aid)
+        resp.data = bytes(ims)
+
+
+class CastellanOobiEnd:
+    """
+    GET /oobi/castellan
+
+    Resolves the key state of castellan's currently-registered server AID —
+    the identity clients must resolve before they can ESSR-encrypt requests
+    to castellan (see CryptSigner.encode() in kept).
+    """
+
+    def __init__(self, hab):
+        self.hab = hab
+
+    def on_get(self, _, resp):
+        ims = self.hab.replyToOobi(aid=self.hab.pre, role=Roles.controller)
+        if not ims:
+            raise falcon.HTTPNotFound(
+                title="Not Found",
+                description=f"No key event log captured for server AID {self.hab.pre}.",
+            )
+
+        resp.status = falcon.HTTP_200
+        resp.content_type = "application/json+cesr"
+        resp.set_header(OOBI_AID_HEADER, self.hab.pre)
         resp.data = bytes(ims)
