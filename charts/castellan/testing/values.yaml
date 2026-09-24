@@ -9,3 +9,7 @@ mongodb:
 rack:
   externalLocation:
     host: castellan-rack-placeholder.test
+
+oobi:
+  externalLocation:
+    host: castellan-oobi-placeholder.test

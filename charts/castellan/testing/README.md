@@ -16,7 +16,7 @@ All commands below assume your shell's working directory is the **repo root**.
 |---|---|
 | `cluster.yaml` | `eksctl` config for the disposable test cluster (1 node, EBS CSI driver pre-wired via IRSA). |
 | `storageclass-gp3-csi.yaml` | Default `StorageClass` backed by the EBS CSI driver — EKS doesn't ship a working one out of the box (see gotcha below). |
-| `values.yaml` | Helm values for this test environment (Docker Hub images, the test Mongo secret). Its `rack.externalLocation.host` placeholder is overridden at install time with the real NLB hostname — see [Spin up](#spin-up) and [Install](#install). |
+| `values.yaml` | Helm values for this test environment (Docker Hub images, the test Mongo secret). Its `rack.externalLocation.host` and `oobi.externalLocation.host` placeholders is overridden at install time with the real NLB hostname — see [Spin up](#spin-up) and [Install](#install). |
 | `nlb-service.yaml` | Standalone (non-Helm) Service that exposes `castellan-rack` via a real AWS NLB. Applied during [Spin up](#spin-up), deliberately outside the chart/release — see that step for why. |
 
 ## Prerequisites
@@ -63,7 +63,7 @@ kubectl create namespace castellan-test
 
 **4. Provision the real AWS NLB, before installing the app.** `castellan-init` only ever
 provisions the `rack` AID's location once per keystore — see
-[Gotcha: `rack.externalLocation.host` can't be changed after first
+[Gotcha: `rack.externalLocation.host` not `oobi.externalLocation.host` can't be changed after first
 install](#gotcha-rackexternallocationhost-cant-be-changed-after-first-install). Provisioning the
 NLB first means the very first `helm install` below can bake in the real, final hostname, so you
 never need to wipe the keystore and reinstall just to get a working external address:
