@@ -11,6 +11,7 @@ set -euo pipefail
 if [ ! -d /usr/local/var/keri/ks/castellan ]; then
   echo "Initializing 'castellan' keystore..."
   kli init --name castellan --nopasscode
+  kli init --name castellan_oobi --nopasscode
 fi
 
 if ! kli aid --name castellan --alias castellan >/dev/null 2>&1; then
