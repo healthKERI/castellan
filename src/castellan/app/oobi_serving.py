@@ -43,12 +43,7 @@ logger = ogler.getLogger()
 
 
 def setup(
-        host="0.0.0.0",
-        port=5924,
-        dbhost=None,
-        dbname=None,
-        dbuser=None,
-        dbpass=None
+    host="0.0.0.0", port=5924, dbhost=None, dbname=None, dbuser=None, dbpass=None
 ):
     """
     Connect to MongoDB, wire the Falcon OOBI app, and return a list of hio
@@ -88,16 +83,14 @@ def setup(
     exchanger = exchanging.Exchanger(hby=hby, handlers=[])
 
     rvy = routing.Revery(db=hby.db, cues=cues)
-    kvy = eventing.Kevery(db=hby.db,
-                          lax=True,
-                          local=False,
-                          rvy=rvy,
-                          cues=cues)
+    kvy = eventing.Kevery(db=hby.db, lax=True, local=False, rvy=rvy, cues=cues)
     kvy.registerReplyRoutes(router=rvy.rtr)
-    parser = parsing.Parser(framed=True,
-                            kvy=kvy,
-                            exc=exchanger,  # Will set exchanger after creating it
-                            rvy=rvy)
+    parser = parsing.Parser(
+        framed=True,
+        kvy=kvy,
+        exc=exchanger,  # Will set exchanger after creating it
+        rvy=rvy,
+    )
 
     account_svc = AccountService(
         kvy=kvy,
@@ -135,7 +128,9 @@ def setup(
         middleware=falcon.CORSMiddleware(allow_origins="*", allow_credentials="*")
     )
 
-    httping.load_ends(app=app, identifier_service=identifier_svc, parser=server_svc.parser)
+    httping.load_ends(
+        app=app, identifier_service=identifier_svc, parser=server_svc.parser
+    )
     app.add_route(
         "/oobi/{said}", OobiDispatchEnd(kel_svc, schema_svc, issued_svc, received_svc)
     )

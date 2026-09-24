@@ -70,7 +70,11 @@ def _serialize_multisig(identifier) -> dict:
         identifier.current_event if hasattr(identifier, "current_event") else {}
     )
     data["vcp"] = identifier.vcp if hasattr(identifier, "vcp") else {}
-    data["registry"] = _serialize_registry(identifier.registry) if hasattr(identifier, "registry") else {}
+    data["registry"] = (
+        _serialize_registry(identifier.registry)
+        if hasattr(identifier, "registry")
+        else {}
+    )
     data["witness_rotate"] = (
         _serialize_witnesses(identifier.witness_rotate)
         if hasattr(identifier, "witness_rotate") and identifier.witness_rotate
@@ -83,6 +87,7 @@ def _serialize_multisig(identifier) -> dict:
     ]
 
     return data
+
 
 def _serialize_registry(registry):
     data = {
@@ -714,7 +719,6 @@ class MultisigIdentifierRegistryCollectionEnd:
             raise falcon.HTTPBadRequest(
                 title="Bad Request", description="'registrar' part is required."
             )
-
 
         try:
             multisig = self.service.create_registry(

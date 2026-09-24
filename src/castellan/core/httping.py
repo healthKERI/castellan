@@ -89,8 +89,8 @@ class HttpEnd:
         except NotFoundError:
             raise falcon.HTTPNotFound(title=f"unknown destination AID {aid}")
 
-        rep.set_header('Cache-Control', "no-cache")
-        rep.set_header('connection', "close")
+        rep.set_header("Cache-Control", "no-cache")
+        rep.set_header("connection", "close")
 
         cr = httping.parseCesrHttpRequest(req=req)
         sadder = coring.Sadder(ked=cr.payload, kind=kering.Kinds.json)
@@ -100,18 +100,26 @@ class HttpEnd:
         self.parser.parseOne(ims=msg, local=True)
 
         if sadder.proto in ("ACDC",):
-            rep.set_header('Content-Type', "application/json")
+            rep.set_header("Content-Type", "application/json")
             rep.status = falcon.HTTP_204
         else:
             ilk = sadder.ked["t"]
-            if ilk in (Ilks.icp, Ilks.rot, Ilks.ixn, Ilks.dip, Ilks.drt, Ilks.exn, Ilks.rpy):
-                rep.set_header('Content-Type', "application/json")
+            if ilk in (
+                Ilks.icp,
+                Ilks.rot,
+                Ilks.ixn,
+                Ilks.dip,
+                Ilks.drt,
+                Ilks.exn,
+                Ilks.rpy,
+            ):
+                rep.set_header("Content-Type", "application/json")
                 rep.status = falcon.HTTP_204
             elif ilk in (Ilks.vcp, Ilks.vrt, Ilks.iss, Ilks.rev, Ilks.bis, Ilks.brv):
-                rep.set_header('Content-Type', "application/json")
+                rep.set_header("Content-Type", "application/json")
                 rep.status = falcon.HTTP_204
             else:
-                rep.set_header('Content-Type', "application/json")
+                rep.set_header("Content-Type", "application/json")
                 rep.status = falcon.HTTP_204
 
     def on_put(self, req, rep):
@@ -144,8 +152,8 @@ class HttpEnd:
             rep.status = falcon.HTTP_200
             return
 
-        rep.set_header('Cache-Control', "no-cache")
-        rep.set_header('connection', "close")
+        rep.set_header("Cache-Control", "no-cache")
+        rep.set_header("connection", "close")
 
         if CESR_DESTINATION_HEADER not in req.headers:
             raise falcon.HTTPBadRequest(title="CESR request destination header missing")
@@ -158,7 +166,7 @@ class HttpEnd:
 
         self.parser.parse(ims=req.bounded_stream.read(), local=True)
 
-        rep.set_header('Content-Type', "application/json")
+        rep.set_header("Content-Type", "application/json")
         rep.status = falcon.HTTP_204
 
 
@@ -198,7 +206,12 @@ class ForwardHandler:
 
     resource = "/fwd"
 
-    def __init__(self, hby, message_service: MessageService, identifier_service: IdentifierService):
+    def __init__(
+        self,
+        hby,
+        message_service: MessageService,
+        identifier_service: IdentifierService,
+    ):
         """
 
         Parameters:
@@ -212,7 +225,7 @@ class ForwardHandler:
         self.identifier_service = identifier_service
 
     def handle(self, serder, attachments=None):
-        """  Do route specific processsing of IPEX protocol exn messages
+        """Do route specific processsing of IPEX protocol exn messages
 
         Parameters:
             serder (Serder): Serder of the IPEX protocol exn message
@@ -220,9 +233,9 @@ class ForwardHandler:
 
         """
 
-        sender_aid = serder.ked.get('i', '')
-        embeds = serder.ked['e']
-        modifiers = serder.ked['q'] if 'q' in serder.ked else {}
+        sender_aid = serder.ked.get("i", "")
+        embeds = serder.ked["e"]
+        modifiers = serder.ked["q"] if "q" in serder.ked else {}
 
         recipient_aid = modifiers["pre"]
         try:
@@ -232,7 +245,9 @@ class ForwardHandler:
             return
 
         if multisig.mailbox is False:
-            logger.error(title=f"destination AID {recipient_aid} has not registered this service as a mailbox")
+            logger.error(
+                title=f"destination AID {recipient_aid} has not registered this service as a mailbox"
+            )
             return
 
         topic = modifiers["topic"]
@@ -261,5 +276,3 @@ class ForwardHandler:
                 f"POST /messages 500: service.post_message raised {type(e).__name__}: {e}",
                 exc_info=True,
             )
-
-
