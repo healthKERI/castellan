@@ -105,7 +105,7 @@ class TestDynamicFieldsIntegration:
             ],
         }
 
-        result = service._capture(creder, doc)
+        result = service.capture_credential(creder, doc)
 
         # Verify that the credential was created with dynamic_fields
         call_kwargs = mock_cred_cls.call_args[1]
@@ -141,7 +141,7 @@ class TestDynamicFieldsIntegration:
         }
 
         # Should not raise, just log warning
-        result = service._capture(creder, doc)
+        result = service.capture_credential(creder, doc)
 
         # Credential should still be saved with empty dynamic_fields
         call_kwargs = mock_cred_cls.call_args[1]

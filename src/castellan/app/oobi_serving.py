@@ -36,6 +36,9 @@ from castellan.core.services.received_credential_service import (
     ReceivedCredentialService,
 )
 from castellan.core.services.registrar_service import RegistrarService
+from castellan.core.services.schema_field_tracking_service import (
+    SchemaFieldTrackingService,
+)
 from castellan.core.services.schema_service import SchemaService
 from castellan.core.services.server_service import ServerService
 
@@ -98,11 +101,22 @@ def setup(
     )
     msg_svc = MessageService()
     kel_svc = KeyEventLogService(hby=hby)
+    field_tracking_svc = SchemaFieldTrackingService()
+    issued_svc = IssuedCredentialService(
+        hby=hby,
+        rgy=rgy,
+        tvy=tvy,
+        parser=parser,
+        kel_svc=kel_svc,
+        field_tracking_svc=field_tracking_svc,
+    )
     identifier_svc = IdentifierService(
         account_service=account_svc,
+        issued_svc=issued_svc,
         kelSvc=kel_svc,
         parser=parser,
         kvy=kvy,
+        tvy=tvy,
         hby=hby,
         castellan_hab=hab,
     )
@@ -111,7 +125,7 @@ def setup(
     )
     exchanger.addHandler(forward_handler)
 
-    schema_svc = SchemaService()
+    schema_svc = SchemaService(hby=hby)
     issued_svc = IssuedCredentialService(hby=hby, rgy=None, tvy=None, parser=parser)
     received_svc = ReceivedCredentialService(hby=hby, rgy=None, tvy=None, parser=parser)
     server_svc = ServerService(parser=None, kvy=None, kel_service=kel_svc)

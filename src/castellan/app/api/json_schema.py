@@ -6,6 +6,7 @@ REST endpoint handlers for /schemas - JSON Schema document management.
 """
 
 import falcon
+from keri.core.scheming import Schemer
 from keri.help import ogler
 
 from castellan.core.services.custom.custom_errors import NotFoundError, ValidationError
@@ -22,7 +23,7 @@ def _serialize(schema):
     }
 
 
-class JsonSchemaCollectionEnd:
+class JSONSchemaCollectionEnd:
     """Handles GET /schemas and POST /schemas."""
 
     def __init__(self, schemaSvc):
@@ -73,42 +74,39 @@ class JsonSchemaCollectionEnd:
         """
         try:
             form = req.get_media()
-            schema_dict = None
+            schema_raw: bytes = b""
 
             for part in form:
-                if part.name == "schema":
+                if part.name == "schema.cesr":
                     if part.content_type and part.content_type.startswith(
-                        "application/json"
+                        "application/octet-stream"
                     ):
-                        schema_dict = part.get_media()
+                        schema_raw = part.get_data()
                     else:
                         raise falcon.HTTPBadRequest(
                             title="Bad Request",
                             description="'schema' part must have content-type application/json",
                         )
+                elif part.name == "data":
+                    pass
                 else:
                     raise falcon.HTTPBadRequest(
                         title="Bad Request",
                         description=f"Unexpected form part: {part.name}. Expected 'schema'.",
                     )
 
-            if schema_dict is None:
+            if not schema_raw:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
                     description="Missing required 'schema' part in multipart form.",
                 )
 
-            if not isinstance(schema_dict, dict):
-                raise falcon.HTTPBadRequest(
-                    title="Bad Request",
-                    description="Schema must be a JSON object.",
-                )
-
+            schemer = Schemer(raw=schema_raw)
             # Validate that schema has $id field
-            if "$id" not in schema_dict:
+            if "$id" not in schemer.sed:
                 raise ValidationError("Schema must have a '$id' field")
 
-            schema = self.service.save_schema(schema_dict)
+            schema = self.service.save_schema(schemer.sed)
 
             logger.info(f"Uploaded schema: {schema.said}")
             resp.status = falcon.HTTP_201

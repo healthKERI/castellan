@@ -1,12 +1,12 @@
 # -*- encoding: utf-8 -*-
 from datetime import datetime
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import falcon
 import pytest
 
 from castellan.app.api.json_schema import (
-    JsonSchemaCollectionEnd,
+    JSONSchemaCollectionEnd,
     JsonSchemaResourceEnd,
 )
 from castellan.core.services.custom.custom_errors import NotFoundError
@@ -17,7 +17,7 @@ class TestJsonSchemaCollectionEnd:
 
     def setup_method(self):
         self.service = Mock()
-        self.end = JsonSchemaCollectionEnd(self.service)
+        self.end = JSONSchemaCollectionEnd(self.service)
         self.req = Mock()
 
     def test_on_get_returns_paginated_schemas(self):
@@ -89,18 +89,24 @@ class TestJsonSchemaCollectionEnd:
         with pytest.raises(falcon.HTTPInternalServerError):
             self.end.on_get(self.req, resp)
 
-    def test_on_post_uploads_schema_successfully(self):
+    @patch("castellan.app.api.json_schema.Schemer")
+    def test_on_post_uploads_schema_successfully(self, mock_schemer_cls):
         """Test POST /schemas successfully uploads a schema"""
         mock_part = Mock()
-        mock_part.name = "schema"
-        mock_part.content_type = "application/json"
-        mock_part.get_media.return_value = {
+        mock_part.name = "schema.cesr"
+        mock_part.content_type = "application/octet-stream"
+        mock_part.get_data.return_value = b'{"$id": "ESAID123", "$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}'
+
+        self.req.get_media.return_value = [mock_part]
+
+        # Mock the Schemer to return parsed schema data
+        mock_schemer = Mock()
+        mock_schemer.sed = {
             "$id": "ESAID123",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
         }
-
-        self.req.get_media.return_value = [mock_part]
+        mock_schemer_cls.return_value = mock_schemer
 
         mock_schema = Mock()
         mock_schema.said = "ESAID123"
@@ -116,6 +122,9 @@ class TestJsonSchemaCollectionEnd:
 
         self.end.on_post(self.req, resp)
 
+        mock_schemer_cls.assert_called_once_with(
+            raw=b'{"$id": "ESAID123", "$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}'
+        )
         self.service.save_schema.assert_called_once_with(
             {
                 "$id": "ESAID123",
@@ -135,9 +144,9 @@ class TestJsonSchemaCollectionEnd:
         }
 
     def test_on_post_rejects_wrong_content_type(self):
-        """Test POST /schemas rejects non-JSON content type"""
+        """Test POST /schemas rejects non-octet-stream content type"""
         mock_part = Mock()
-        mock_part.name = "schema"
+        mock_part.name = "schema.cesr"
         mock_part.content_type = "text/plain"
 
         self.req.get_media.return_value = [mock_part]
@@ -158,50 +167,63 @@ class TestJsonSchemaCollectionEnd:
             self.end.on_post(self.req, resp)
 
     def test_on_post_rejects_missing_schema_part(self):
-        """Test POST /schemas rejects missing schema part"""
+        """Test POST /schemas rejects missing schema.cesr part"""
         self.req.get_media.return_value = []
         resp = Mock()
 
         with pytest.raises(falcon.HTTPBadRequest):
             self.end.on_post(self.req, resp)
 
-    def test_on_post_rejects_non_dict_schema(self):
-        """Test POST /schemas rejects non-dict schema"""
+    @patch("castellan.app.api.json_schema.Schemer")
+    def test_on_post_rejects_invalid_schema_bytes(self, mock_schemer_cls):
+        """Test POST /schemas rejects invalid schema bytes"""
         mock_part = Mock()
-        mock_part.name = "schema"
-        mock_part.content_type = "application/json"
-        mock_part.get_media.return_value = ["not", "a", "dict"]
+        mock_part.name = "schema.cesr"
+        mock_part.content_type = "application/octet-stream"
+        mock_part.get_data.return_value = b"invalid bytes"
 
         self.req.get_media.return_value = [mock_part]
+        mock_schemer_cls.side_effect = Exception("Invalid schema format")
         resp = Mock()
 
-        with pytest.raises(falcon.HTTPBadRequest):
+        with pytest.raises(falcon.HTTPInternalServerError):
             self.end.on_post(self.req, resp)
 
-    def test_on_post_rejects_schema_without_id_field(self):
+    @patch("castellan.app.api.json_schema.Schemer")
+    def test_on_post_rejects_schema_without_id_field(self, mock_schemer_cls):
         """Test POST /schemas rejects schema without $id field"""
         mock_part = Mock()
-        mock_part.name = "schema"
-        mock_part.content_type = "application/json"
-        mock_part.get_media.return_value = {"type": "object"}
+        mock_part.name = "schema.cesr"
+        mock_part.content_type = "application/octet-stream"
+        mock_part.get_data.return_value = b'{"type": "object"}'
 
         self.req.get_media.return_value = [mock_part]
+
+        # Mock Schemer to return sed without $id
+        mock_schemer = Mock()
+        mock_schemer.sed = {"type": "object"}
+        mock_schemer_cls.return_value = mock_schemer
+
         resp = Mock()
 
         with pytest.raises(falcon.HTTPBadRequest):
             self.end.on_post(self.req, resp)
 
-    def test_on_post_handles_service_error(self):
+    @patch("castellan.app.api.json_schema.Schemer")
+    def test_on_post_handles_service_error(self, mock_schemer_cls):
         """Test POST /schemas handles service errors"""
         mock_part = Mock()
-        mock_part.name = "schema"
-        mock_part.content_type = "application/json"
-        mock_part.get_media.return_value = {
-            "$id": "ESAID123",
-            "type": "object",
-        }
+        mock_part.name = "schema.cesr"
+        mock_part.content_type = "application/octet-stream"
+        mock_part.get_data.return_value = b'{"$id": "ESAID123", "type": "object"}'
 
         self.req.get_media.return_value = [mock_part]
+
+        # Mock Schemer to return valid schema with $id
+        mock_schemer = Mock()
+        mock_schemer.sed = {"$id": "ESAID123", "type": "object"}
+        mock_schemer_cls.return_value = mock_schemer
+
         self.service.save_schema.side_effect = Exception("Database error")
         resp = Mock()
 
