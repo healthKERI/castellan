@@ -12,7 +12,8 @@ class TestSchemaService:
 
     def setup_method(self):
         """Set up test fixtures"""
-        self.service = SchemaService()
+        self.mock_hby = Mock()
+        self.service = SchemaService(hby=self.mock_hby)
 
     @patch("castellan.core.services.schema_service.Schema")
     @patch("castellan.core.services.schema_service.Schemer")
@@ -36,6 +37,9 @@ class TestSchemaService:
             said="ESAID123", sed={"$id": "ESAID123"}, raw=b"raw-bytes"
         )
         mock_schema.save.assert_called_once()
+        self.mock_hby.db.schema.pin.assert_called_once_with(
+            keys=("ESAID123",), val=mock_schemer
+        )
         assert result == mock_schema
 
     @patch("castellan.core.services.schema_service.Schema")

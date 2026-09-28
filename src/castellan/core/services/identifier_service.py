@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple
 from bson import ObjectId
 from keri import kering
 from keri.app import habbing
-from keri.core.serdering import SerderKERI
+from keri.core.serdering import SerderKERI, SerderACDC
 from keri.help import ogler
 from mongoengine import (
     DateTimeField,
@@ -68,6 +68,8 @@ class Registry(EmbeddedDocument):
     registry_pre = StringField(required=True)  # Registry prefix/identifier
     registry_said = StringField(required=True)
     registry_name = StringField(required=True)  # Human-readable name
+    vcp = DictField(required=False)
+    attachment = StringField(required=False)
     created_at = DateTimeField(default=datetime.now)
 
 
@@ -79,6 +81,7 @@ class MultisigMember(EmbeddedDocument):
     rotation_threshold = StringField(required=False)
     public_key = StringField(required=False)
     current_signature = StringField(required=False)
+    grant_signature = StringField(required=False)
     current_lead = BooleanField(default=False)
 
 
@@ -101,11 +104,16 @@ class MultisigIdentifier(UploadedIdentifier):
     signing_threshold = IntField(required=False)
     rotation_threshold = IntField(required=False)
     current_event = DictField(required=False)
+    current_tel_event = DictField(required=False)
+    current_tel_attachment = StringField(required=False)
     current_metadata = DictField(required=False)
-    vcp = DictField(required=False)  # Registry inception event
     mbx = DictField(required=False)
     rgr = DictField(required=False)
+    credential = DictField(required=False)
+    credential_attachment = StringField(required=False)
+    grant = DictField(required=False)
     registry = EmbeddedDocumentField(Registry, required=False)
+
     witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
     witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
 
@@ -116,17 +124,25 @@ class IdentifierService:
     def __init__(
         self,
         account_service,
+        issued_svc,
         kelSvc=None,
         parser=None,
         kvy=None,
         hby=None,
+        rgy=None,
+        tvy=None,
+        verifier=None,
         castellan_hab=None,
     ):
         self.account_service = account_service
+        self.issued_svc = issued_svc
         self.kelSvc = kelSvc
         self.parser = parser
         self.kvy = kvy
         self.hby = hby
+        self.rgy = rgy
+        self.tvy = tvy
+        self.verifier = verifier
         self.castellan_hab = castellan_hab
 
     def upload(
@@ -602,7 +618,7 @@ class IdentifierService:
 
         return multisig
 
-    def create_registry(
+    def create_multisig_registry(
         self,
         multisig_id: str,
         account_aid: str,
@@ -670,6 +686,7 @@ class IdentifierService:
         # Parse the all the events
         try:
             vcp_event = SerderKERI(raw=bytes(vcp))
+            attachment = vcp[vcp_event.size :]
         except Exception as e:
             raise ValueError(f"Failed to parse vcp event: {e}")
 
@@ -717,6 +734,8 @@ class IdentifierService:
                 registry_pre=vcp_event.pre,
                 registry_said=vcp_event.said,
                 registry_name=registry_name,
+                vcp=vcp_event.ked,
+                attachment=attachment,
             )
             multisig.mailbox = True
             multisig.registrar = True
@@ -735,7 +754,7 @@ class IdentifierService:
             ].decode("utf-8")
             multisig.members[member_idx].current_lead = True
             multisig.current_metadata = dict(registry_name=registry_name)
-            multisig.vcp = vcp_event.ked
+            multisig.current_tel_event = vcp_event.ked
             multisig.mbx = mailbox_event.ked
             multisig.rgr = registrar_event.ked
             multisig.save()
@@ -743,6 +762,210 @@ class IdentifierService:
             logger.info(
                 f"Created registry for multisig {multisig_id} by account {account_aid}"
             )
+
+        return multisig
+
+    @staticmethod
+    def issue_multisig_credential(
+        multisig_id: str,
+        account_aid: str,
+        iss: bytes,
+        ixn: bytes,
+        credential: bytes,
+        grant: bytes,
+    ) -> MultisigIdentifier:
+        """
+        Create a credential registry for a multisig identifier.
+
+        Args:
+            multisig_id: The ID of the multisig identifier.
+            account_aid: The AID of the account creating the registry.
+            iss: Raw CESR-encoded issuer event bytes.
+            ixn: Raw CESR-encoded interaction event bytes.
+            credential: Raw CESR-encoded credential event bytes.
+            grant: Raw CESR-encoded grant event bytes.
+
+        Returns:
+            The updated MultisigIdentifier document with vcp and current_event set.
+
+        Raises:
+            ValueError: If required parameters are missing or events cannot be parsed.
+            NotFoundError: If the multisig identifier is not found.
+            PermissionError: If the account is not authorized (not in members list).
+        """
+        if not multisig_id:
+            raise ValueError("multisig_id is required")
+        if not account_aid:
+            raise ValueError("account_aid is required")
+        if not iss:
+            raise ValueError("iss is required")
+        if not ixn:
+            raise ValueError("ixn is required")
+        if not credential:
+            raise ValueError("credential is required")
+        if not grant:
+            raise ValueError("grant is required")
+
+        # Load the multisig identifier
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        # Verify account_aid is in the members list
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to create registry for this multisig"
+            )
+
+        # Parse the all the events
+        try:
+            iss_event = SerderKERI(raw=bytes(iss))
+        except Exception as e:
+            raise ValueError(f"Failed to parse iss event: {e}")
+
+        try:
+            ixn_event = SerderKERI(raw=bytes(ixn))
+        except Exception as e:
+            raise ValueError(f"Failed to parse ixn event: {e}")
+        try:
+            credential_event = SerderACDC(raw=bytes(credential))
+        except Exception as e:
+            raise ValueError(f"Failed to parse credential event: {e}")
+
+        try:
+            grant_event = SerderKERI(raw=bytes(grant))
+        except Exception as e:
+            raise ValueError(f"Failed to parse grant event: {e}")
+
+        # Update the multisig with the registry events
+        multisig.current_event = ixn_event.ked
+        multisig.members[member_idx].current_signature = ixn[ixn_event.size :].decode(
+            "utf-8"
+        )
+        multisig.members[member_idx].grant_signature = grant[grant_event.size :].decode(
+            "utf-8"
+        )
+        multisig.members[member_idx].current_lead = True
+        multisig.current_tel_event = iss_event.ked
+        multisig.current_tel_attachment = iss[iss_event.size :].decode("utf-8")
+        multisig.credential = credential_event.sad
+        multisig.credential_attachment = credential[credential_event.size :].decode(
+            "utf-8"
+        )
+        multisig.grant = grant_event.sad
+        multisig.save()
+
+        logger.info(
+            f"Created registry for multisig {multisig_id} by account {account_aid}"
+        )
+
+        return multisig
+
+    def complete_multisig_credential(
+        self,
+        body: dict,
+        multisig_id: str,
+        account_aid: str,
+        ixn: bytes,
+    ) -> MultisigIdentifier:
+        """
+        Create a credential registry for a multisig identifier.
+
+        Args:
+            body: The request body containing the interaction event.
+            multisig_id: The ID of the multisig identifier.
+            account_aid: The AID of the account creating the registry.
+            ixn: Raw CESR-encoded interaction event bytes.
+
+        Returns:
+            The updated MultisigIdentifier document with vcp and current_event set.
+
+        Raises:
+            ValueError: If required parameters are missing or events cannot be parsed.
+            NotFoundError: If the multisig identifier is not found.
+            PermissionError: If the account is not authorized (not in members list).
+        """
+        if not multisig_id:
+            raise ValueError("multisig_id is required")
+        if not account_aid:
+            raise ValueError("account_aid is required")
+        if not ixn:
+            raise ValueError("ixn is required")
+
+        # Load the multisig identifier
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        try:
+            creder = SerderACDC(sad=multisig.credential)
+        except Exception as e:
+            raise ValueError(f"Failed to parse credential: {e}")
+
+        # Validate the KEL
+        if self.parser is None or self.kvy is None:
+            raise RuntimeError(
+                "IdentifierService requires parser and kvy to process KEL"
+            )
+
+        ixn = bytearray(ixn)
+        iss = bytearray(SerderKERI(sad=multisig.current_tel_event).raw)
+        iss.extend(multisig.current_tel_attachment.encode("utf-8"))
+
+        acdc = bytearray(SerderACDC(sad=multisig.credential).raw)
+        acdc.extend(multisig.credential_attachment.encode("utf-8"))
+
+        grant = bytearray(SerderKERI(sad=multisig.grant).raw)
+
+        for member in multisig.members:
+            if member.grant_signature:
+                grant.extend(member.grant_signature.encode("utf-8"))
+            if member.member_aid != account_aid and member.current_signature:
+                ixn.extend(member.current_signature.encode("utf-8"))
+
+        try:
+            self.parser.parse(ims=ixn, kvy=self.kvy, local=True)
+            self.parser.parse(ims=iss, kvy=self.kvy, local=True)
+            self.parser.parse(ims=acdc, kvy=self.kvy, local=True)
+            self.parser.parse(ims=grant, kvy=self.kvy, local=True)
+            self.kvy.processEscrows()
+            self.tvy.processEscrows()
+            self.verifier.processEscrows()
+
+        except Exception as e:
+            raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+
+        if not self.rgy.reger.saved.get(keys=(creder.said,)):
+            raise ValueError("Credential issuance not satisfied with current event")
+
+        self.issued_svc.capture_credential(creder, body)
+
+        multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
+        multisig.current_event = None
+        multisig.current_tel_event = None
+        multisig.current_tel_attachment = None
+        multisig.credential = None
+        multisig.credential_attachment = None
+        multisig.grant = None
+        for member in multisig.members:
+            member.public_key = None
+            member.current_signature = None
+            member.grant_signature = None
+            member.current_lead = False
+
+        multisig.save()
+
+        self.kelSvc.capture_kel(multisig.aid)
+        self.kelSvc.scan_for_delegates(multisig.aid)
+        self.kelSvc.capture_rpys(multisig.aid)
 
         return multisig
 

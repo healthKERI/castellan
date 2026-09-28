@@ -28,13 +28,14 @@ from castellan.app.api.identifier import (
     MultisigIdentifierRegistryCollectionEnd,
     MultisigIdentifierWitnessCollectionEnd,
     MultisigIdentifierWitnessResourceEnd,
+    MultisigIdentifierCredentialCollectionEnd,
 )
 from castellan.app.api.issued_credential import (
     IssuedCredentialCollectionEnd,
     IssuedCredentialResourceEnd,
 )
 from castellan.app.api.json_schema import (
-    JsonSchemaCollectionEnd,
+    JSONSchemaCollectionEnd,
     JsonSchemaResourceEnd,
 )
 from castellan.app.api.message import MessageCollectionEnd, MessageResourceEnd
@@ -105,13 +106,13 @@ def setup(
 
     cues = decking.Deck()
     rvy = routing.Revery(db=hby.db, cues=cues)
-    kvy = eventing.Kevery(db=hby.db, lax=True, local=False, rvy=rvy, cues=cues)
+    kvy = eventing.Kevery(db=hby.db, lax=True, local=True, rvy=rvy, cues=cues)
     kvy.registerReplyRoutes(router=rvy.rtr)
 
     rgy = credentialing.Regery(hby=hby, name=name, temp=False)
     verifier = verifying.Verifier(hby=hby, reger=rgy.reger)
     tvy = Tevery(
-        reger=verifier.reger, db=hby.db, rvy=rvy, lax=True, local=False, cues=cues
+        reger=verifier.reger, db=hby.db, rvy=rvy, lax=True, local=True, cues=cues
     )
     parser = parsing.Parser(kvy=kvy, rvy=rvy, tvy=tvy, vry=verifier)
 
@@ -138,7 +139,7 @@ def setup(
         parser=parser,
     )
     kel_svc = KeyEventLogService(hby=hby)
-    schema_svc = SchemaService()
+    schema_svc = SchemaService(hby=hby)
     field_tracking_svc = SchemaFieldTrackingService()
     issued_svc = IssuedCredentialService(
         hby=hby,
@@ -159,10 +160,14 @@ def setup(
     msg_svc = MessageService()
     identifier_svc = IdentifierService(
         account_service=account_svc,
+        issued_svc=issued_svc,
         kelSvc=kel_svc,
         parser=parser,
         kvy=kvy,
+        tvy=tvy,
+        verifier=verifier,
         hby=hby,
+        rgy=rgy,
         castellan_hab=hab,
     )
     registrar_svc = RegistrarService(
@@ -230,6 +235,10 @@ def setup(
         MultisigIdentifierRegistryCollectionEnd(identifier_svc),
     )
     app.add_route(
+        "/multisig/identifiers/{multisig_id}/credentials",
+        MultisigIdentifierCredentialCollectionEnd(identifier_svc),
+    )
+    app.add_route(
         "/multisig/identifiers/{multisig_id}/witnesses",
         MultisigIdentifierWitnessCollectionEnd(identifier_svc),
     )
@@ -239,7 +248,7 @@ def setup(
     )
 
     # JSON Schema management routes
-    app.add_route("/schemas", JsonSchemaCollectionEnd(schema_svc))
+    app.add_route("/schemas", JSONSchemaCollectionEnd(schema_svc))
     app.add_route("/schemas/{said}", JsonSchemaResourceEnd(schema_svc))
     app.add_route("/schemas/{said}/fields", SchemaFieldTrackingEnd(field_tracking_svc))
 

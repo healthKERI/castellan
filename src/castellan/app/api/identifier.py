@@ -69,12 +69,15 @@ def _serialize_multisig(identifier) -> dict:
     data["current_event"] = (
         identifier.current_event if hasattr(identifier, "current_event") else {}
     )
-    data["vcp"] = identifier.vcp if hasattr(identifier, "vcp") else {}
     data["registry"] = (
         _serialize_registry(identifier.registry)
         if hasattr(identifier, "registry")
         else {}
     )
+    data["credential"] = (
+        identifier.credential if hasattr(identifier, "credential") else {}
+    )
+    data["grant"] = identifier.grant if hasattr(identifier, "grant") else {}
     data["witness_rotate"] = (
         _serialize_witnesses(identifier.witness_rotate)
         if hasattr(identifier, "witness_rotate") and identifier.witness_rotate
@@ -90,11 +93,17 @@ def _serialize_multisig(identifier) -> dict:
 
 
 def _serialize_registry(registry):
-    data = {
-        "registry_pre": registry.registry_pre,
-        "registry_said": registry.registry_said,
-        "registry_name": registry.registry_name,
-    }
+    data = (
+        {
+            "registry_pre": registry.registry_pre,
+            "registry_said": registry.registry_said,
+            "registry_name": registry.registry_name,
+            "vcp": registry.vcp,
+            "attachment": registry.attachment,
+        }
+        if registry
+        else None
+    )
 
     return data
 
@@ -633,7 +642,7 @@ class MultisigIdentifierSignatureCollectionEnd:
 
 
 class MultisigIdentifierRegistryCollectionEnd:
-    """Handles POST /multisig/identifiers/{multisig_id}/registry — create a credential registry."""
+    """Handles POST /multisig/identifiers/{multisig_id}/registries — create a credential registry."""
 
     def __init__(self, identifierSvc):
         self.service = identifierSvc
@@ -721,7 +730,7 @@ class MultisigIdentifierRegistryCollectionEnd:
             )
 
         try:
-            multisig = self.service.create_registry(
+            multisig = self.service.create_multisig_registry(
                 multisig_id=multisig_id,
                 account_aid=account_aid,
                 vcp=bytes(vcp),
@@ -729,6 +738,200 @@ class MultisigIdentifierRegistryCollectionEnd:
                 mailbox=bytes(mailbox),
                 registrar=bytes(registrar),
                 body=body,
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except PermissionError as e:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description=str(e),
+            )
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_201
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+
+class MultisigIdentifierCredentialCollectionEnd:
+    """Handles POST /multisig/identifiers/{multisig_id}/credentials — Issue a credential registry."""
+
+    def __init__(self, identifierSvc):
+        self.service = identifierSvc
+
+    def on_post(self, req, resp, multisig_id):
+        """
+        Issue a credential for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (multipart/form-data):
+            iss  — binary part: raw CESR-encoded credential issuance TEL event bytes
+            ixn  — binary part: raw CESR-encoded interaction event bytes
+            credential  — binary part: raw CESR-encoded credential bytes
+            grant  — binary part: raw CESR-encoded grant EXN event bytes
+
+        The account_aid is derived from req.context.account (authenticated caller).
+
+        Response (201): updated MultisigIdentifier document with iss and current_event.
+        Response (400): if required parts are missing or parse failure.
+        Response (401): if the account is not authorized (not in members list).
+        Response (404): if the multisig identifier is not found.
+        """
+        # Get the account from the authenticated context
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
+            )
+        account_aid = account.aid
+
+        form = req.get_media()
+
+        iss: bytes | None = None
+        ixn: bytes | None = None
+        credential: bytes | None = None
+        grant: bytes | None = None
+        for part in form:
+            if part.name == "iss":
+                iss = part.get_data()
+            elif part.name == "ixn":
+                ixn = part.get_data()
+            elif part.name == "credential":
+                credential = part.get_data()
+            elif part.name == "grant":
+                grant = part.get_data()
+            else:
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"Unexpected form part '{part.name}'.",
+                )
+
+        if not iss:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'iss' part is required."
+            )
+        if not ixn:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn' part is required."
+            )
+        if not credential:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'credential' part is required."
+            )
+        if not grant:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'grant' part is required."
+            )
+
+        try:
+            multisig = self.service.issue_multisig_credential(
+                multisig_id=multisig_id,
+                account_aid=account_aid,
+                iss=bytes(iss),
+                ixn=bytes(ixn),
+                credential=bytes(credential),
+                grant=bytes(grant),
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except PermissionError as e:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description=str(e),
+            )
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_201
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+    def on_put(self, req, resp, multisig_id):
+        """
+        Complete the issuance of a credential for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (multipart/form-data):
+            ixn  — binary part: raw CESR-encoded interaction event bytes
+
+        The account_aid is derived from req.context.account (authenticated caller).
+
+        Response (201): updated MultisigIdentifier document with iss and current_event.
+        Response (400): if required parts are missing or parse failure.
+        Response (401): if the account is not authorized (not in members list).
+        Response (404): if the multisig identifier is not found.
+        """
+        # Get the account from the authenticated context
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
+            )
+        account_aid = account.aid
+
+        form = req.get_media()
+
+        ixn: bytes | None = None
+        body = dict()
+
+        for part in form:
+            if part.name == "body":
+                if part.content_type.startswith("application/json"):
+                    json_data = part.get_media()
+                    if isinstance(json_data, dict):
+                        body.update(json_data)
+                    else:
+                        raise falcon.HTTPBadRequest(
+                            title="Bad Request",
+                            description="The 'body' part must be a JSON object.",
+                        )
+                else:
+                    raise falcon.HTTPBadRequest(
+                        title="Bad Request",
+                        description="The 'body' part must have content-type application/json.",
+                    )
+            elif part.name == "ixn":
+                ixn = part.get_data()
+            else:
+                raise falcon.HTTPBadRequest(
+                    title="Bad Request",
+                    description=f"Unexpected form part '{part.name}'.",
+                )
+
+        if not ixn:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn' part is required."
+            )
+
+        try:
+            multisig = self.service.complete_multisig_credential(
+                body=body,
+                multisig_id=multisig_id,
+                account_aid=account_aid,
+                ixn=bytes(ixn),
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))

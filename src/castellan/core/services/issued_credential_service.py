@@ -239,7 +239,7 @@ class IssuedCredentialService:
         self.kel_svc.get_keystate(issuer)
 
         try:
-            self.parser.parse(ims=bytearray(acdc), tvy=self.tvy, local=False)
+            self.parser.parse(ims=bytearray(acdc), tvy=self.tvy, local=True)
         except Exception as e:
             raise RuntimeError(f"Error parsing ACDC stream: {e}")
 
@@ -247,9 +247,9 @@ class IssuedCredentialService:
         if creder is None:
             raise RuntimeError(f"Credential {said} not found in reger after parsing")
 
-        return self._capture(creder, doc)
+        return self.capture_credential(creder, doc)
 
-    def _capture(self, creder, doc: dict):
+    def capture_credential(self, creder, doc: dict):
         """Build and persist an IssuedCredential from a parsed SerderACDC."""
         regk = creder.regi
         status_text = "issued"

@@ -36,6 +36,9 @@ class Schema(Document):
 class SchemaService:
     """Service for persisting and resolving JSON schema documents."""
 
+    def __init__(self, hby):
+        self.hby = hby
+
     def save_schema(self, sed: dict) -> Schema:
         """
         Derive and verify the SAID of the given schema dict via keri's Schemer,
@@ -50,6 +53,9 @@ class SchemaService:
 
         schema = Schema(said=schemer.said, sed=schemer.sed, raw=schemer.raw)
         schema.save()
+
+        self.hby.db.schema.pin(keys=(schemer.said,), val=schemer)
+
         return schema
 
     def get_schema(self, said: str) -> Schema:
