@@ -30,6 +30,7 @@ from castellan.core import httping
 from castellan.core.basing import databaseInit
 from castellan.core.services import MessageService, IdentifierService
 from castellan.core.services.account_service import AccountService
+from castellan.core.services.grant_service import GrantService
 from castellan.core.services.issued_credential_service import IssuedCredentialService
 from castellan.core.services.key_event_log_service import KeyEventLogService
 from castellan.core.services.received_credential_service import (
@@ -101,6 +102,7 @@ def setup(
     )
     msg_svc = MessageService()
     kel_svc = KeyEventLogService(hby=hby)
+    grant_svc = GrantService(hby=hby)
     field_tracking_svc = SchemaFieldTrackingService()
     issued_svc = IssuedCredentialService(
         hby=hby,
@@ -114,6 +116,7 @@ def setup(
         account_service=account_svc,
         issued_svc=issued_svc,
         kelSvc=kel_svc,
+        grant_svc=grant_svc,
         parser=parser,
         kvy=kvy,
         tvy=tvy,

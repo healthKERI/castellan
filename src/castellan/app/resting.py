@@ -13,6 +13,7 @@ from keri import kering
 from keri.app import indirecting, oobiing
 from keri.core import eventing, parsing, routing
 from keri.help import ogler
+from keri.peer import exchanging
 from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
 
@@ -58,6 +59,7 @@ from castellan.core.services import (
     IdentifierService,
 )
 from castellan.core.services.account_service import AccountService
+from castellan.core.services.grant_service import GrantService
 from castellan.core.services.key_event_log_service import KeyEventLogService
 from castellan.core.services.registrar_service import RegistrarService
 from castellan.core.services.schema_field_tracking_service import (
@@ -114,7 +116,8 @@ def setup(
     tvy = Tevery(
         reger=verifier.reger, db=hby.db, rvy=rvy, lax=True, local=True, cues=cues
     )
-    parser = parsing.Parser(kvy=kvy, rvy=rvy, tvy=tvy, vry=verifier)
+    exc = exchanging.Exchanger(hby=hby, handlers=[])
+    parser = parsing.Parser(kvy=kvy, rvy=rvy, tvy=tvy, vry=verifier, exc=exc)
 
     hab = hby.habByName(alias)
     if hab is None:
@@ -140,6 +143,7 @@ def setup(
     )
     kel_svc = KeyEventLogService(hby=hby)
     schema_svc = SchemaService(hby=hby)
+    grant_svc = GrantService(hby=hby)
     field_tracking_svc = SchemaFieldTrackingService()
     issued_svc = IssuedCredentialService(
         hby=hby,
@@ -162,6 +166,7 @@ def setup(
         account_service=account_svc,
         issued_svc=issued_svc,
         kelSvc=kel_svc,
+        grant_svc=grant_svc,
         parser=parser,
         kvy=kvy,
         tvy=tvy,

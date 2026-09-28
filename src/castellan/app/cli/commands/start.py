@@ -121,6 +121,6 @@ def run_service(args, expire=0.0):
         dbpass=args.dbpass,
     )
 
-    tock = 0.00125
+    tock = 0.03125
     doist = doing.Doist(limit=expire, tock=tock, real=True)
     doist.do(doers=doers)

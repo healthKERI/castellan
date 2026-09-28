@@ -125,6 +125,7 @@ class IdentifierService:
         self,
         account_service,
         issued_svc,
+        grant_svc,
         kelSvc=None,
         parser=None,
         kvy=None,
@@ -136,6 +137,7 @@ class IdentifierService:
     ):
         self.account_service = account_service
         self.issued_svc = issued_svc
+        self.grant_svc = grant_svc
         self.kelSvc = kelSvc
         self.parser = parser
         self.kvy = kvy
@@ -923,7 +925,8 @@ class IdentifierService:
         acdc = bytearray(SerderACDC(sad=multisig.credential).raw)
         acdc.extend(multisig.credential_attachment.encode("utf-8"))
 
-        grant = bytearray(SerderKERI(sad=multisig.grant).raw)
+        grant_event = SerderKERI(sad=multisig.grant)
+        grant = bytearray(grant_event.raw)
 
         for member in multisig.members:
             if member.grant_signature:
@@ -932,10 +935,10 @@ class IdentifierService:
                 ixn.extend(member.current_signature.encode("utf-8"))
 
         try:
-            self.parser.parse(ims=ixn, kvy=self.kvy, local=True)
-            self.parser.parse(ims=iss, kvy=self.kvy, local=True)
-            self.parser.parse(ims=acdc, kvy=self.kvy, local=True)
-            self.parser.parse(ims=grant, kvy=self.kvy, local=True)
+            self.parser.parse(ims=ixn, local=True)
+            self.parser.parse(ims=iss, local=True)
+            self.parser.parse(ims=acdc, local=True)
+            self.parser.parse(ims=grant, local=True)
             self.kvy.processEscrows()
             self.tvy.processEscrows()
             self.verifier.processEscrows()
@@ -947,6 +950,7 @@ class IdentifierService:
             raise ValueError("Credential issuance not satisfied with current event")
 
         self.issued_svc.capture_credential(creder, body)
+        self.grant_svc.capture_grant(grant_event.said)
 
         multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
         multisig.current_event = None
