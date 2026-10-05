@@ -2,16 +2,14 @@
 """
 castellan.app.cli.commands.oobi.start module
 
-Launch the castellan OOBI service.
+Launch the castellan OOBI service using uvicorn.
 """
 
 import argparse
 import logging
+import os
 
-from hio.base import doing
 from keri import __version__, help
-
-from castellan.app import oobi_serving
 
 parser = argparse.ArgumentParser(description="Launch the castellan OOBI service")
 parser.set_defaults(handler=lambda args: launch(args))
@@ -37,6 +35,13 @@ parser.add_argument(
     help="HTTP server port (default 5924).",
 )
 parser.add_argument(
+    "--workers",
+    action="store",
+    type=int,
+    default=1,
+    help="Number of worker processes (default 1).",
+)
+parser.add_argument(
     "--loglevel",
     action="store",
     required=False,
@@ -59,6 +64,8 @@ FORMAT = "%(asctime)s [castellan] %(levelname)-8s %(message)s"
 
 
 def launch(args):
+    import uvicorn
+
     help.ogler.level = logging.getLevelName(args.loglevel)
     base_formatter = logging.Formatter(FORMAT)
     base_formatter.default_msec_format = None
@@ -71,26 +78,29 @@ def launch(args):
 
     logger = help.ogler.getLogger()
     logger.info(
-        "******* Starting castellan OOBI service on %s:%s. *******",
+        "******* Starting castellan OOBI service on %s:%s *******",
         args.host,
         args.port,
     )
 
-    run_service(args)
+    # Set environment variables for app configuration
+    if args.dbhost:
+        os.environ["CASTELLAN_DBHOST"] = args.dbhost
+    if args.dbname:
+        os.environ["CASTELLAN_DBNAME"] = args.dbname
+    if args.dbuser:
+        os.environ["CASTELLAN_DBUSER"] = args.dbuser
+    if args.dbpass:
+        os.environ["CASTELLAN_DBPASS"] = args.dbpass
 
-    logger.info("******* Ended castellan OOBI service. *******")
-
-
-def run_service(args, expire=0.0):
-    doers = oobi_serving.setup(
+    # Run uvicorn
+    uvicorn.run(
+        "castellan.app.oobi_serving:app",
         host=args.host,
         port=args.port,
-        dbhost=args.dbhost,
-        dbname=args.dbname,
-        dbuser=args.dbuser,
-        dbpass=args.dbpass,
+        workers=args.workers,
+        log_level=args.loglevel.lower(),
+        reload=False,
     )
 
-    tock = 0.00125
-    doist = doing.Doist(limit=expire, tock=tock, real=True)
-    doist.do(doers=doers)
+    logger.info("******* Ended castellan OOBI service. *******")

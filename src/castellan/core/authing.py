@@ -57,7 +57,7 @@ class SignatureValidationComponent:
         self.authn = auth
         self.allowed = allowed if allowed is not None else []
 
-    def process_request(self, req, rep):
+    async def process_request(self, req, rep):
         """Process request to ensure has a valid signature from aid
 
         Parameters:

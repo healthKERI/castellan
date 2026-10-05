@@ -39,7 +39,7 @@ class ReceivedCredentialCollectionEnd:
     def __init__(self, receivedCredentialSvc):
         self.service = receivedCredentialSvc
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """List received credentials with optional filtering and pagination.
 
         Query params:
@@ -85,7 +85,7 @@ class ReceivedCredentialCollectionEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """Upload a received credential.
 
         Expects multipart/form-data with:
@@ -99,7 +99,7 @@ class ReceivedCredentialCollectionEnd:
             acdc - raw ACDC bytes
         """
         try:
-            form = req.get_media()
+            form = await req.get_media()
             doc = {}
             acdc = None
 
@@ -162,7 +162,7 @@ class ReceivedCredentialResourceEnd:
     def __init__(self, receivedCredentialSvc):
         self.service = receivedCredentialSvc
 
-    def on_get(self, req, resp, said):
+    async def on_get(self, req, resp, said):
         """Retrieve a single received credential.
 
         Query params:
@@ -190,7 +190,7 @@ class ReceivedCredentialResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_patch(self, req, resp, said):
+    async def on_patch(self, req, resp, said):
         """Update a received credential (partial update).
 
         Request body (JSON): {
@@ -199,7 +199,7 @@ class ReceivedCredentialResourceEnd:
         }
         """
         try:
-            body = req.media
+            body = await req.get_media()
             if not body:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -222,7 +222,7 @@ class ReceivedCredentialResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_delete(self, req, resp, said):
+    async def on_delete(self, req, resp, said):
         """Delete a received credential."""
         try:
             self.service.delete_credential(said)

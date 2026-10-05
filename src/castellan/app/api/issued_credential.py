@@ -40,7 +40,7 @@ class IssuedCredentialCollectionEnd:
     def __init__(self, issued_credential_svc):
         self.service = issued_credential_svc
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """List issued credentials with optional filtering and pagination.
 
         Query params:
@@ -89,7 +89,7 @@ class IssuedCredentialCollectionEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """Upload an issued credential.
 
         Expects multipart/form-data with:
@@ -102,7 +102,7 @@ class IssuedCredentialCollectionEnd:
             acdc - raw ACDC bytes
         """
         try:
-            form = req.get_media()
+            form = await req.get_media()
             doc = {}
             acdc = None
 
@@ -168,7 +168,7 @@ class IssuedCredentialResourceEnd:
     def __init__(self, issuedCredentialSvc):
         self.service = issuedCredentialSvc
 
-    def on_get(self, req, resp, said):
+    async def on_get(self, req, resp, said):
         """Retrieve a single issued credential.
 
         Query params:
@@ -196,7 +196,7 @@ class IssuedCredentialResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_patch(self, req, resp, said):
+    async def on_patch(self, req, resp, said):
         """Update an issued credential.
 
         Request body (JSON): {
@@ -208,7 +208,7 @@ class IssuedCredentialResourceEnd:
         }
         """
         try:
-            body = req.media
+            body = await req.get_media()
             if not body:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -232,7 +232,7 @@ class IssuedCredentialResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_delete(self, req, resp, said):
+    async def on_delete(self, req, resp, said):
         """Delete an issued credential."""
         try:
             self.service.delete_credential(said)

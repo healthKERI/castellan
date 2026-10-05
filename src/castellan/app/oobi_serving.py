@@ -2,16 +2,18 @@
 """
 castellan.app.oobi_serving module
 
-Falcon application factory for castellan's standalone, unauthenticated OOBI
-service. Streams already-signed CESR bytes and schema JSON straight out of
-MongoDB — no KERI keystore/Habery, so it scales horizontally behind a load
-balancer with zero shared keystore state.
+Falcon ASGI application for castellan's standalone OOBI service.
+
+Usage:
+    CLI:      castellan oobi start --host 0.0.0.0 --port 5924
+    uvicorn:  uvicorn castellan.app.oobi_serving:app --host 0.0.0.0 --port 5924
 """
 
-import falcon
-from hio.core import http
+import os
+
+import falcon.asgi
 from hio.help import decking
-from keri.app import indirecting, habbing
+from keri.app import habbing
 from keri.core import routing, eventing, parsing
 from keri.help import ogler
 from keri.peer import exchanging
@@ -46,24 +48,30 @@ from castellan.core.services.server_service import ServerService
 logger = ogler.getLogger()
 
 
-def setup(
-    host="0.0.0.0", port=5924, dbhost=None, dbname=None, dbuser=None, dbpass=None
-):
+def create_app(
+    dbhost: str | None = None,
+    dbname: str | None = None,
+    dbuser: str | None = None,
+    dbpass: str | None = None,
+) -> falcon.asgi.App:
     """
-    Connect to MongoDB, wire the Falcon OOBI app, and return a list of hio
-    doers ready for a Doist to run.
+    Create and configure the Falcon ASGI application.
 
     Args:
-        host:   HTTP server bind address (default 0.0.0.0).
-        port:   HTTP server port (default 5924).
-        dbhost: MongoDB connection string (default mongodb://localhost:27017).
-        dbname: MongoDB database name (default castellan).
-        dbuser: MongoDB username for authentication (optional).
-        dbpass: MongoDB password for authentication (optional).
+        dbhost: MongoDB connection string (or CASTELLAN_DBHOST env var)
+        dbname: MongoDB database name (or CASTELLAN_DBNAME env var)
+        dbuser: MongoDB username (or CASTELLAN_DBUSER env var)
+        dbpass: MongoDB password (or CASTELLAN_DBPASS env var)
 
     Returns:
-        List of hio Doers.
+        Configured Falcon ASGI application.
     """
+    db_host = dbhost or os.getenv("CASTELLAN_DBHOST", "mongodb://localhost:27017")
+    db_name = dbname or os.getenv("CASTELLAN_DBNAME", "castellan")
+    db_user = dbuser or os.getenv("CASTELLAN_DBUSER")
+    db_pass = dbpass or os.getenv("CASTELLAN_DBPASS")
+
+    # Initialize KERI Habery
     hby = habbing.Habery(name="castellan_oobi", base="", temp=False)
     if (hab := hby.habByName("castellan_oobi")) is None:
         hab = hby.makeHab(name="castellan_oobi", transferable=False)
@@ -76,11 +84,6 @@ def setup(
     # Create Tevery for TEL processing
     tvy = Tevery(reger=rgy.reger, db=hby.db, rvy=rvy, lax=True, local=False, cues=cues)
 
-    db_host = dbhost if dbhost else "mongodb://localhost:27017"
-    db_name = dbname if dbname else "castellan"
-    db_user = dbuser if dbuser else None
-    db_pass = dbpass if dbpass else None
-
     databaseInit(host=db_host, name=db_name, username=db_user, password=db_pass)
     logger.info(f"Connected to MongoDB at {db_host}@{db_name}")
 
@@ -92,7 +95,7 @@ def setup(
     parser = parsing.Parser(
         framed=True,
         kvy=kvy,
-        exc=exchanger,  # Will set exchanger after creating it
+        exc=exchanger,
         rvy=rvy,
     )
 
@@ -141,7 +144,7 @@ def setup(
         key_event_log_service=kel_svc,
     )
 
-    app = falcon.App(
+    app = falcon.asgi.App(
         middleware=falcon.CORSMiddleware(allow_origins="*", allow_credentials="*")
     )
 
@@ -162,7 +165,9 @@ def setup(
     )
     app.add_route("/registrar/oobi/{aid}", RegistrarOOBIEnd(registrar_svc))
 
-    server = indirecting.createHttpServer(host=host, port=port, app=app)
+    logger.info("Castellan OOBI ASGI app created")
+    return app
 
-    logger.info(f"Castellan OOBI service listening on {host}:{port}")
-    return [http.ServerDoer(server=server)]
+
+# Module-level app for uvicorn import
+app = create_app()

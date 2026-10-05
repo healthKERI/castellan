@@ -33,7 +33,7 @@ class RegistrarTELEnd:
     def __init__(self, registrarSvc: RegistrarService):
         self.service = registrarSvc
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         issuer = req.get_param("issuer", required=True)
         issuer_sn = req.get_param_as_int("issuer_sn", required=True)
         try:
@@ -52,7 +52,7 @@ class RegistrarTELEnd:
         resp.status = falcon.HTTP_200
         resp.media = {"events": saids}
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """Accept CESR grant with optional metadata.
 
         Supports two content types:
@@ -62,7 +62,7 @@ class RegistrarTELEnd:
         # Check if multipart
         if req.content_type and req.content_type.startswith("multipart/form-data"):
             # Parse multipart form data
-            form = req.get_media()
+            form = await req.get_media()
             doc: dict = {}
             tel: bytes = b""
             kel: bytes = b""
@@ -137,7 +137,7 @@ class RegistrarOobiEnd:
     def __init__(self, hab):
         self.hab = hab
 
-    def on_get(self, req, resp, cid):
+    async def on_get(self, req, resp, cid):
         try:
             msgs = self.hab.replyToOobi(aid=cid, role=kering.Roles.registrar)
         except Exception as e:

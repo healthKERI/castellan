@@ -2,20 +2,21 @@
 """
 castellan.app.resting module
 
-Falcon application factory and service wiring for the castellan credential server.
+Falcon ASGI application factory and service wiring for the castellan credential server.
 """
 
-import falcon
-from hio.base import doing
-from hio.core import http
-from hio.help import decking
+import asyncio
+import os
+from contextlib import asynccontextmanager
+
+import falcon.asgi
 from keri import kering
-from keri.app import indirecting, oobiing
 from keri.core import eventing, parsing, routing
 from keri.help import ogler
 from keri.peer import exchanging
 from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
+from sentinel.core import oobiing
 
 from castellan.app.api.account import AccountCollectionEnd, AccountResourceEnd
 from castellan.app.api.health import HealthEnd
@@ -70,52 +71,74 @@ from castellan.core.services.schema_service import SchemaService
 logger = ogler.getLogger()
 
 
-def setup(
-    name="castellan",
-    alias="castellan",
+def _make_escrow_task(process_fn, interval=0.5):
+    """Create an async task factory for escrow processing.
+
+    Args:
+        process_fn: Synchronous function to call for escrow processing.
+        interval: Sleep interval between processing cycles (default 0.5s).
+
+    Returns:
+        An async callable that runs the escrow processing loop.
+    """
+
+    async def escrow_loop():
+        while True:
+            await asyncio.sleep(interval)
+            process_fn()
+
+    return escrow_loop
+
+
+def create_app(
+    name=None,
+    alias=None,
     base=None,
     bran=None,
-    host="127.0.0.1",
-    port=5923,
     dbhost=None,
     dbname=None,
     dbuser=None,
     dbpass=None,
 ):
     """
-    Initialise all KERI components, connect to MongoDB, wire the Falcon app,
-    and return a list of hio doers ready for directing.runController().
+    Initialise all KERI components, connect to MongoDB, wire the Falcon ASGI app,
+    and return the app along with background task factories.
 
     Args:
-        name:        KERI keystore name.
-        alias:       KERI identifier alias.
-        base:        Optional keystore path prefix.
-        bran:        21-character keystore passcode.
-        host:        HTTP server bind address (default 127.0.0.1).
-        port:        HTTP server port (default 5923).
-        dbhost:      MongoDB connection string (default mongodb://localhost:27017).
-        dbname:      MongoDB database name (default healthKERI).
-        dbuser:      MongoDB username for authentication (optional).
-        dbpass:      MongoDB password for authentication (optional).
+        name:        KERI keystore name (or from env CASTELLAN_NAME).
+        alias:       KERI identifier alias (or from env CASTELLAN_ALIAS).
+        base:        Optional keystore path prefix (or from env CASTELLAN_BASE).
+        bran:        21-character keystore passcode (or from env CASTELLAN_BRAN).
+        dbhost:      MongoDB connection string (or from env CASTELLAN_DBHOST).
+        dbname:      MongoDB database name (or from env CASTELLAN_DBNAME).
+        dbuser:      MongoDB username (or from env CASTELLAN_DBUSER).
+        dbpass:      MongoDB password (or from env CASTELLAN_DBPASS).
 
     Returns:
-        List of hio Doers.
+        Tuple of (falcon.asgi.App, list of background task factories).
     """
+    # Read from environment if not provided
+    name = name or os.environ.get("CASTELLAN_NAME", "castellan")
+    alias = alias or os.environ.get("CASTELLAN_ALIAS", "castellan")
+    base = base or os.environ.get("CASTELLAN_BASE") or ""
+    bran = bran or os.environ.get("CASTELLAN_BRAN") or None
+    dbhost = dbhost or os.environ.get("CASTELLAN_DBHOST")
+    dbname = dbname or os.environ.get("CASTELLAN_DBNAME")
+    dbuser = dbuser or os.environ.get("CASTELLAN_DBUSER")
+    dbpass = dbpass or os.environ.get("CASTELLAN_DBPASS")
+
     # ------------------------------------------------------------------ #
-    # KERI components                                                 #
+    # KERI components                                                    #
     # ------------------------------------------------------------------ #
     hby = Hby.hby(name=name, base=base, bran=bran)
 
-    cues = decking.Deck()
-    rvy = routing.Revery(db=hby.db, cues=cues)
-    kvy = eventing.Kevery(db=hby.db, lax=True, local=True, rvy=rvy, cues=cues)
+    rvy = routing.Revery(db=hby.db)
+    kvy = eventing.Kevery(db=hby.db, lax=True, local=True, rvy=rvy)
     kvy.registerReplyRoutes(router=rvy.rtr)
 
     rgy = credentialing.Regery(hby=hby, name=name, temp=False)
     verifier = verifying.Verifier(hby=hby, reger=rgy.reger)
-    tvy = Tevery(
-        reger=verifier.reger, db=hby.db, rvy=rvy, lax=True, local=True, cues=cues
-    )
+    tvy = Tevery(reger=verifier.reger, db=hby.db, rvy=rvy, lax=True, local=True)
     exc = exchanging.Exchanger(hby=hby, handlers=[])
     parser = parsing.Parser(kvy=kvy, rvy=rvy, tvy=tvy, vry=verifier, exc=exc)
 
@@ -124,7 +147,7 @@ def setup(
         raise kering.ConfigurationError(f"Hab '{alias}' not found in keystore '{name}'")
 
     # ------------------------------------------------------------------ #
-    # Configuration & database                                        #
+    # Configuration & database                                           #
     # ------------------------------------------------------------------ #
     db_host = dbhost if dbhost else "mongodb://mongodb:27017"
     db_name = dbname if dbname else "castellan"
@@ -135,7 +158,7 @@ def setup(
     logger.info(f"Connected to MongoDB at {db_host}@{db_name}")
 
     # ------------------------------------------------------------------ #
-    # Services                                                        #
+    # Services                                                           #
     # ------------------------------------------------------------------ #
     account_svc = AccountService(
         kvy=kvy,
@@ -185,9 +208,9 @@ def setup(
     )
 
     # ------------------------------------------------------------------ #
-    # Falcon app                                                         #
+    # Falcon ASGI app                                                    #
     # ------------------------------------------------------------------ #
-    app = falcon.App(
+    falcon_app = falcon.asgi.App(
         middleware=falcon.CORSMiddleware(
             allow_origins="*",
             allow_credentials="*",
@@ -204,74 +227,80 @@ def setup(
     )
 
     # Existing credential routes
-    app.add_route("/issued-credentials", IssuedCredentialCollectionEnd(issued_svc))
-    app.add_route("/issued-credentials/{said}", IssuedCredentialResourceEnd(issued_svc))
-    app.add_route(
+    falcon_app.add_route("/issued-credentials", IssuedCredentialCollectionEnd(issued_svc))
+    falcon_app.add_route(
+        "/issued-credentials/{said}", IssuedCredentialResourceEnd(issued_svc)
+    )
+    falcon_app.add_route(
         "/received-credentials", ReceivedCredentialCollectionEnd(received_svc)
     )
-    app.add_route(
+    falcon_app.add_route(
         "/received-credentials/{said}", ReceivedCredentialResourceEnd(received_svc)
     )
 
     # Registrar routes (TEL events + OOBI)
-    app.add_route("/registrar/tel-events", RegistrarTELEnd(registrar_svc))
+    falcon_app.add_route("/registrar/tel-events", RegistrarTELEnd(registrar_svc))
 
     # Standard KERI registrar OOBI (kering.Roles.registrar is the standard role name)
-    app.add_route("/oobi/{cid}/registrar", RegistrarOobiEnd(hab))
+    falcon_app.add_route("/oobi/{cid}/registrar", RegistrarOobiEnd(hab))
 
     # Uploaded identifier routes
-    app.add_route("/identifiers", IdentifierCollectionEnd(identifier_svc))
-    app.add_route("/identifiers/{aid}", IdentifierResourceEnd(identifier_svc, kel_svc))
-    app.add_route("/identifiers/{aid}/kel", IdentifierKelEnd(identifier_svc))
+    falcon_app.add_route("/identifiers", IdentifierCollectionEnd(identifier_svc))
+    falcon_app.add_route(
+        "/identifiers/{aid}", IdentifierResourceEnd(identifier_svc, kel_svc)
+    )
+    falcon_app.add_route("/identifiers/{aid}/kel", IdentifierKelEnd(identifier_svc))
 
-    app.add_route(
+    falcon_app.add_route(
         "/multisig/identifiers", MultisigIdentifierCollectionEnd(identifier_svc)
     )
-    app.add_route(
+    falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}",
         MultisigIdentifierResourceEnd(identifier_svc),
     )
-    app.add_route(
+    falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/signatures",
         MultisigIdentifierSignatureCollectionEnd(identifier_svc),
     )
-    app.add_route(
+    falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/registries",
         MultisigIdentifierRegistryCollectionEnd(identifier_svc),
     )
-    app.add_route(
+    falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/credentials",
         MultisigIdentifierCredentialCollectionEnd(identifier_svc),
     )
-    app.add_route(
+    falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/witnesses",
         MultisigIdentifierWitnessCollectionEnd(identifier_svc),
     )
-    app.add_route(
+    falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/witnesses/rotate",
         MultisigIdentifierWitnessResourceEnd(identifier_svc),
     )
 
     # JSON Schema management routes
-    app.add_route("/schemas", JSONSchemaCollectionEnd(schema_svc))
-    app.add_route("/schemas/{said}", JsonSchemaResourceEnd(schema_svc))
-    app.add_route("/schemas/{said}/fields", SchemaFieldTrackingEnd(field_tracking_svc))
+    falcon_app.add_route("/schemas", JSONSchemaCollectionEnd(schema_svc))
+    falcon_app.add_route("/schemas/{said}", JsonSchemaResourceEnd(schema_svc))
+    falcon_app.add_route(
+        "/schemas/{said}/fields", SchemaFieldTrackingEnd(field_tracking_svc)
+    )
 
     # Intra-enterprise mailbox routes
-    app.add_route("/messages", MessageCollectionEnd(msg_svc))
-    app.add_route("/messages/{id}", MessageResourceEnd(msg_svc))
+    falcon_app.add_route("/messages", MessageCollectionEnd(msg_svc))
+    falcon_app.add_route("/messages/{id}", MessageResourceEnd(msg_svc))
 
     # Account management routes
-    app.add_route("/accounts", AccountCollectionEnd(account_svc))
-    app.add_route("/accounts/{aid}", AccountResourceEnd(account_svc))
+    falcon_app.add_route("/accounts", AccountCollectionEnd(account_svc))
+    falcon_app.add_route("/accounts/{aid}", AccountResourceEnd(account_svc))
 
-    # Health check route (authenticated — verifies the signed connection works
+    # Health check route (authenticated - verifies the signed connection works
     # end-to-end, not just that the process is alive)
-    app.add_route("/health", HealthEnd())
+    falcon_app.add_route("/health", HealthEnd())
 
     # Authentication middleware (reuses healthKERI account infrastructure)
     auth = Authenticater(hab, account_svc)
-    app.add_middleware(
+    falcon_app.add_middleware(
         SignatureValidationComponent(
             accountSvc=account_svc,
             hab=hab,
@@ -281,33 +310,51 @@ def setup(
     )
 
     # ------------------------------------------------------------------ #
-    # 6. HTTP server doer                                                #
+    # Background task factories                                          #
     # ------------------------------------------------------------------ #
-    oobiery = oobiing.Oobiery(hby=hby)
+    oobiery = oobiing.Oobiery(hby=hby, rvy=rvy)
 
-    server = indirecting.createHttpServer(host=host, port=port, app=app)
-    server_doer = http.ServerDoer(server=server)
+    kvy_escrow_task = _make_escrow_task(kvy.processEscrows)
+    tvy_escrow_task = _make_escrow_task(tvy.processEscrows)
 
-    # Continuous escrow processing — runs every 0.5 s so out-of-order or
-    # dependency-pending events are resolved without waiting for a new request.
-    def _make_escrow_doer(process_fn, tock=0.5):
-        def escrow_do(tymth, tock=tock, **kwa):
-            yield tock
-            while True:
-                process_fn()
-                yield tock
+    # Store components on app for lifespan access
+    falcon_app.oobiery = oobiery
+    falcon_app.kvy_escrow_loop = kvy_escrow_task
+    falcon_app.tvy_escrow_loop = tvy_escrow_task
 
-        return doing.doify(escrow_do)
+    logger.info("Castellan ASGI app created")
+    return falcon_app, [oobiery, kvy_escrow_task, tvy_escrow_task]
 
-    kvy_escrow_doer = _make_escrow_doer(kvy.processEscrows)
-    tvy_escrow_doer = _make_escrow_doer(tvy.processEscrows)
 
-    doers = [
-        *oobiery.doers,
-        server_doer,
-        kvy_escrow_doer,
-        tvy_escrow_doer,
-    ]
+@asynccontextmanager
+async def lifespan(falcon_app):
+    """ASGI lifespan context manager for background task management."""
+    tasks = []
 
-    logger.info(f"Castellan credential server listening on {host}:{port}")
-    return doers
+    # Start oobiery tasks
+    oobiery_tasks = falcon_app.oobiery.start()
+    tasks.extend(oobiery_tasks)
+
+    # Start escrow processing tasks
+    tasks.append(asyncio.create_task(falcon_app.kvy_escrow_loop()))
+    tasks.append(asyncio.create_task(falcon_app.tvy_escrow_loop()))
+
+    logger.info(f"Started {len(tasks)} background tasks")
+
+    yield
+
+    # Shutdown: cancel all tasks
+    for task in tasks:
+        task.cancel()
+
+    # Wait for tasks to complete cancellation
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Stop oobiery (closes httpx client)
+    await falcon_app.oobiery.stop()
+
+    logger.info("Background tasks stopped")
+
+
+# Module-level app for uvicorn
+app, _background_tasks = create_app()

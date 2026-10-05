@@ -145,7 +145,7 @@ class IdentifierCollectionEnd:
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """
         Upload a whisper identifier to castellan.
 
@@ -158,7 +158,7 @@ class IdentifierCollectionEnd:
 
         Response (201): serialized UploadedIdentifier document.
         """
-        form = req.get_media()
+        form = await req.get_media()
 
         doc = {}
         kel = None
@@ -227,7 +227,7 @@ class IdentifierCollectionEnd:
         resp.content_type = "application/json"
         resp.media = _serialize(identifier)
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """
         List identifiers uploaded to castellan, with pagination/filter/sort.
 
@@ -287,7 +287,7 @@ class MultisigIdentifierCollectionEnd:
     def __init__(self, identifier_service):
         self.identifier_service = identifier_service
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """
         Upload a multisig identifier to castellan.
 
@@ -297,7 +297,7 @@ class MultisigIdentifierCollectionEnd:
 
         Response (201): serialized MultisigIdentifier document.
         """
-        form = req.get_media()
+        form = await req.get_media()
 
         doc = {}
         kel = None
@@ -383,7 +383,7 @@ class MultisigIdentifierCollectionEnd:
         resp.content_type = "application/json"
         resp.media = _serialize_multisig(multisig_identifier)
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """
         List multisig identifiers uploaded to castellan, with pagination/filter/sort.
 
@@ -440,7 +440,7 @@ class MultisigIdentifierResourceEnd:
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    def on_put(self, req, resp, multisig_id):
+    async def on_put(self, req, resp, multisig_id):
         """
         Allow a member to join a multisig identifier by providing their member AID and KEL.
 
@@ -468,7 +468,7 @@ class MultisigIdentifierResourceEnd:
 
         account_aid = account.aid
 
-        form = req.get_media()
+        form = await req.get_media()
 
         doc = {}
         kel = None
@@ -552,7 +552,7 @@ class MultisigIdentifierSignatureCollectionEnd:
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    def on_post(self, req, resp, multisig_id):
+    async def on_post(self, req, resp, multisig_id):
         """
         Record that a member has submitted their signature for a multisig identifier.
 
@@ -578,7 +578,7 @@ class MultisigIdentifierSignatureCollectionEnd:
             )
         account_aid = account.aid
 
-        form = req.get_media()
+        form = await req.get_media()
 
         doc = {}
         icp = None
@@ -647,7 +647,7 @@ class MultisigIdentifierRegistryCollectionEnd:
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    def on_post(self, req, resp, multisig_id):
+    async def on_post(self, req, resp, multisig_id):
         """
         Create a credential registry for a multisig identifier.
 
@@ -675,7 +675,7 @@ class MultisigIdentifierRegistryCollectionEnd:
             )
         account_aid = account.aid
 
-        form = req.get_media()
+        form = await req.get_media()
 
         body = {}
         vcp: bytes | None = None
@@ -768,7 +768,7 @@ class MultisigIdentifierCredentialCollectionEnd:
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    def on_post(self, req, resp, multisig_id):
+    async def on_post(self, req, resp, multisig_id):
         """
         Issue a credential for a multisig identifier.
 
@@ -797,7 +797,7 @@ class MultisigIdentifierCredentialCollectionEnd:
             )
         account_aid = account.aid
 
-        form = req.get_media()
+        form = await req.get_media()
 
         iss: bytes | None = None
         ixn: bytes | None = None
@@ -866,7 +866,7 @@ class MultisigIdentifierCredentialCollectionEnd:
         resp.content_type = "application/json"
         resp.media = _serialize_multisig(multisig)
 
-    def on_put(self, req, resp, multisig_id):
+    async def on_put(self, req, resp, multisig_id):
         """
         Complete the issuance of a credential for a multisig identifier.
 
@@ -892,7 +892,7 @@ class MultisigIdentifierCredentialCollectionEnd:
             )
         account_aid = account.aid
 
-        form = req.get_media()
+        form = await req.get_media()
 
         ixn: bytes | None = None
         body = dict()
@@ -962,7 +962,7 @@ class IdentifierKelEnd:
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    def on_get(self, req, resp, aid):
+    async def on_get(self, req, resp, aid):
         """
         Return the CESR-encoded KEL for an uploaded identifier.
 
@@ -994,7 +994,7 @@ class IdentifierResourceEnd:
         self.service = identifier_svc
         self.key_event_log_service = key_event_log_service
 
-    def on_get(self, req, resp, aid):
+    async def on_get(self, req, resp, aid):
         """Identifier get endpoint
 
         Parameters:
@@ -1043,7 +1043,7 @@ class IdentifierResourceEnd:
             resp.content_type = "application/json"
             resp.media = identifier
 
-    def on_delete(self, req, resp, aid):
+    async def on_delete(self, req, resp, aid):
         """Delete an uploaded identifier by AID."""
         try:
             self.service.delete(aid)
@@ -1064,7 +1064,7 @@ class MultisigIdentifierWitnessCollectionEnd:
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    def on_post(self, req, resp, multisig_id):
+    async def on_post(self, req, resp, multisig_id):
         """
         Set witness rotation configuration for a multisig identifier.
 
@@ -1085,7 +1085,7 @@ class MultisigIdentifierWitnessCollectionEnd:
         Response (400): if current_event is not empty or validation fails.
         Response (404): if the multisig identifier is not found.
         """
-        body = req.get_media()
+        body = await req.get_media()
 
         adds = body.get("adds")
         cuts = body.get("cuts")
@@ -1162,7 +1162,7 @@ class MultisigIdentifierWitnessCollectionEnd:
         resp.content_type = "application/json"
         resp.media = _serialize_multisig(multisig)
 
-    def on_put(self, req, resp, multisig_id):
+    async def on_put(self, req, resp, multisig_id):
         """
         Complete a witness rotation for a multisig identifier.
 
@@ -1177,7 +1177,7 @@ class MultisigIdentifierWitnessCollectionEnd:
         Response (400): if required parts are missing or parse failure.
         Response (404): if the multisig identifier is not found.
         """
-        form = req.get_media()
+        form = await req.get_media()
 
         data = {}
         rot: bytes | None = None

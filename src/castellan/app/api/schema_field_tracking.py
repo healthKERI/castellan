@@ -24,7 +24,7 @@ class SchemaFieldTrackingEnd:
     def __init__(self, trackingSvc):
         self.service = trackingSvc
 
-    def on_get(self, req, resp, said):
+    async def on_get(self, req, resp, said):
         """Get all tracked field type/label pairs for a schema.
 
         Path params:
@@ -50,7 +50,7 @@ class SchemaFieldTrackingEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_delete(self, req, resp, said):
+    async def on_delete(self, req, resp, said):
         """Delete a specific field type/label pair from tracking.
 
         Path params:

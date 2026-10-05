@@ -7,11 +7,10 @@ Launch the castellan credential server.
 
 import argparse
 import logging
+import os
 
-from hio.base import doing
+import uvicorn
 from keri import __version__, help
-
-from castellan.app import resting
 
 parser = argparse.ArgumentParser(description="Launch the castellan credential server")
 parser.set_defaults(handler=lambda args: launch(args))
@@ -102,25 +101,27 @@ def launch(args):
         args.port,
     )
 
-    run_service(args)
+    # Set environment variables for app configuration
+    os.environ["CASTELLAN_NAME"] = args.name
+    os.environ["CASTELLAN_ALIAS"] = args.alias
+    if args.bran:
+        os.environ["CASTELLAN_BRAN"] = args.bran
+    if args.base:
+        os.environ["CASTELLAN_BASE"] = args.base
+    if args.dbhost:
+        os.environ["CASTELLAN_DBHOST"] = args.dbhost
+    if args.dbname:
+        os.environ["CASTELLAN_DBNAME"] = args.dbname
+    if args.dbuser:
+        os.environ["CASTELLAN_DBUSER"] = args.dbuser
+    if args.dbpass:
+        os.environ["CASTELLAN_DBPASS"] = args.dbpass
 
-    logger.info("******* Ended castellan credential server. *******")
-
-
-def run_service(args, expire=0.0):
-    doers = resting.setup(
-        name=args.name,
-        alias=args.alias,
-        bran=args.bran,
-        base=args.base,
+    uvicorn.run(
+        "castellan.app.resting:app",
         host=args.host,
         port=args.port,
-        dbhost=args.dbhost,
-        dbname=args.dbname,
-        dbuser=args.dbuser,
-        dbpass=args.dbpass,
+        log_level=args.loglevel.lower(),
     )
 
-    tock = 0.03125
-    doist = doing.Doist(limit=expire, tock=tock, real=True)
-    doist.do(doers=doers)
+    logger.info("******* Ended castellan credential server. *******")

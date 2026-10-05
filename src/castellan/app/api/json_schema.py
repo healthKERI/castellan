@@ -29,7 +29,7 @@ class JSONSchemaCollectionEnd:
     def __init__(self, schemaSvc):
         self.service = schemaSvc
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """List all schemas with pagination.
 
         Query params:
@@ -64,7 +64,7 @@ class JSONSchemaCollectionEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """Upload a JSON Schema document.
 
         Expects multipart/form-data with:
@@ -73,7 +73,7 @@ class JSONSchemaCollectionEnd:
         The schema must have a valid $id field. SAID is derived from the schema.
         """
         try:
-            form = req.get_media()
+            form = await req.get_media()
             schema_raw: bytes = b""
 
             for part in form:
@@ -133,7 +133,7 @@ class JsonSchemaResourceEnd:
     def __init__(self, schemaSvc):
         self.service = schemaSvc
 
-    def on_get(self, req, resp, said):
+    async def on_get(self, req, resp, said):
         """Retrieve a single JSON Schema by SAID.
 
         Path params:
@@ -169,7 +169,7 @@ class JsonSchemaResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_delete(self, req, resp, said):
+    async def on_delete(self, req, resp, said):
         """Delete a JSON Schema by SAID.
 
         Path params:

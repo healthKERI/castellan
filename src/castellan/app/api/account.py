@@ -33,7 +33,7 @@ class AccountCollectionEnd:
     def __init__(self, account_service):
         self.service = account_service
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """List all accounts.
 
         Returns:
@@ -70,7 +70,7 @@ class AccountCollectionEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """
         Upload a whisper identifier to castellan.
 
@@ -83,7 +83,7 @@ class AccountCollectionEnd:
 
         Response (201): serialized UploadedIdentifier document.
         """
-        form = req.get_media()
+        form = await req.get_media()
 
         doc = {}
         kel = None
@@ -158,7 +158,7 @@ class AccountResourceEnd:
     def __init__(self, service):
         self.service = service
 
-    def on_get(self, req, resp, aid):
+    async def on_get(self, req, resp, aid):
         """Get an account.
 
         Path params:
@@ -182,7 +182,7 @@ class AccountResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_post(self, req, resp, aid):
+    async def on_post(self, req, resp, aid):
         """Update an account.
 
         Path params:
@@ -205,7 +205,7 @@ class AccountResourceEnd:
             400: Validation error
         """
         try:
-            body = req.media
+            body = await req.get_media()
             if not body:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -248,7 +248,7 @@ class AccountResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_delete(self, req, resp, aid):
+    async def on_delete(self, req, resp, aid):
         """Delete an account."""
         try:
             self.service.delete_account(aid)
