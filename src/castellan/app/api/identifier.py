@@ -16,13 +16,17 @@ Alias uniqueness is enforced server-side; duplicate alias → 409 Conflict.
 import base64
 import json
 
+from keri.core import Siger
 from requests_toolbelt import MultipartEncoder
 
 import falcon
 from keri.help import ogler
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
-from castellan.core.services.identifier_service import MultisigIdentifier
+from castellan.core.services.identifier_service import (
+    MultisigIdentifier,
+    IdentifierService,
+)
 
 logger = ogler.getLogger()
 
@@ -69,6 +73,11 @@ def _serialize_multisig(identifier) -> dict:
     data["current_event"] = (
         identifier.current_event if hasattr(identifier, "current_event") else {}
     )
+    data["current_tel_event"] = (
+        identifier.current_tel_event if hasattr(identifier, "current_tel_event") else {}
+    )
+    data["mbx"] = identifier.mbx if hasattr(identifier, "mbx") else {}
+    data["rgr"] = identifier.rgr if hasattr(identifier, "rgr") else {}
     data["registry"] = (
         _serialize_registry(identifier.registry)
         if hasattr(identifier, "registry")
@@ -88,6 +97,7 @@ def _serialize_multisig(identifier) -> dict:
         for witness in identifier.witnesses
         if identifier.witnesses
     ]
+    data["current_metadata"] = identifier.current_metadata or {}
 
     return data
 
@@ -115,6 +125,9 @@ def _serialize_member(member):
         "member_aid": member.member_aid,
         "signing_threshold": member.signing_threshold,
         "rotation_threshold": member.rotation_threshold,
+        "current_signature": member.current_signature,
+        "mbx_signature": member.mbx_signature,
+        "rgr_signature": member.rgr_signature,
         "public_key": member.public_key if hasattr(member, "public_key") else None,
     }
 
@@ -162,10 +175,10 @@ class IdentifierCollectionEnd:
 
         doc = {}
         kel = None
-        for part in form:
+        async for part in form:
             if part.name == "doc":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         doc.update(json_data)
                     else:
@@ -179,7 +192,7 @@ class IdentifierCollectionEnd:
                         description="The 'doc' part must have content-type application/json.",
                     )
             elif part.name == "kel":
-                kel = part.get_data()
+                kel = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -301,10 +314,10 @@ class MultisigIdentifierCollectionEnd:
 
         doc = {}
         kel = None
-        for part in form:
+        async for part in form:
             if part.name == "doc":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         doc.update(json_data)
                     else:
@@ -318,7 +331,7 @@ class MultisigIdentifierCollectionEnd:
                         description="The 'doc' part must have content-type application/json.",
                     )
             elif part.name == "kel":
-                kel = part.get_data()
+                kel = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -472,10 +485,10 @@ class MultisigIdentifierResourceEnd:
 
         doc = {}
         kel = None
-        for part in form:
+        async for part in form:
             if part.name == "doc":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         doc.update(json_data)
                     else:
@@ -489,7 +502,7 @@ class MultisigIdentifierResourceEnd:
                         description="The 'doc' part must have content-type application/json.",
                     )
             elif part.name == "kel":
-                kel = part.get_data()
+                kel = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -582,10 +595,10 @@ class MultisigIdentifierSignatureCollectionEnd:
 
         doc = {}
         icp = None
-        for part in form:
+        async for part in form:
             if part.name == "doc":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         doc.update(json_data)
                     else:
@@ -599,7 +612,7 @@ class MultisigIdentifierSignatureCollectionEnd:
                         description="The 'doc' part must have content-type application/json.",
                     )
             elif part.name == "icp":
-                icp = part.get_data()
+                icp = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -675,56 +688,21 @@ class MultisigIdentifierRegistryCollectionEnd:
             )
         account_aid = account.aid
 
-        form = await req.get_media()
+        body = await req.get_media()
 
-        body = {}
-        vcp: bytes | None = None
-        ixn: bytes | None = None
-        mailbox: bytes | None = None
-        registrar: bytes | None = None
-        for part in form:
-            if part.name == "body":
-                if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
-                    if isinstance(json_data, dict):
-                        body.update(json_data)
-                    else:
-                        raise falcon.HTTPBadRequest(
-                            title="Bad Request",
-                            description="The 'body' part must be a JSON object.",
-                        )
-                else:
-                    raise falcon.HTTPBadRequest(
-                        title="Bad Request",
-                        description="The 'body' part must have content-type application/json.",
-                    )
-            elif part.name == "vcp":
-                vcp = part.get_data()
-            elif part.name == "ixn":
-                ixn = part.get_data()
-            elif part.name == "mailbox":
-                mailbox = part.get_data()
-            elif part.name == "registrar":
-                registrar = part.get_data()
-            else:
-                raise falcon.HTTPBadRequest(
-                    title="Bad Request",
-                    description=f"Unexpected form part '{part.name}'.",
-                )
-
-        if not vcp:
+        if "vcp" not in body:
             raise falcon.HTTPBadRequest(
                 title="Bad Request", description="'vcp' part is required."
             )
-        if not ixn:
+        if "ixn" not in body:
             raise falcon.HTTPBadRequest(
                 title="Bad Request", description="'ixn' part is required."
             )
-        if not mailbox:
+        if "mailbox" not in body:
             raise falcon.HTTPBadRequest(
                 title="Bad Request", description="'mailbox' part is required."
             )
-        if not registrar:
+        if "registrar" not in body:
             raise falcon.HTTPBadRequest(
                 title="Bad Request", description="'registrar' part is required."
             )
@@ -733,10 +711,13 @@ class MultisigIdentifierRegistryCollectionEnd:
             multisig = self.service.create_multisig_registry(
                 multisig_id=multisig_id,
                 account_aid=account_aid,
-                vcp=bytes(vcp),
-                ixn=bytes(ixn),
-                mailbox=bytes(mailbox),
-                registrar=bytes(registrar),
+                vcp=body.get("vcp"),
+                ixn=body.get("ixn"),
+                ixn_siger=Siger(qb64=body.get("ixn_siger")),
+                mailbox=body.get("mailbox"),
+                mailbox_siger=Siger(qb64=body.get("mailbox_siger")),
+                registrar=body.get("registrar"),
+                registrar_siger=Siger(qb64=body.get("registrar_siger")),
                 body=body,
             )
         except NotFoundError as e:
@@ -758,6 +739,86 @@ class MultisigIdentifierRegistryCollectionEnd:
             )
 
         resp.status = falcon.HTTP_201
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+
+class MultisigRegsitrySignatureCollectionEnd:
+    """Handles POST /multisig/registries/signatures — record member signature submission."""
+
+    def __init__(self, identifierSvc: IdentifierService):
+        self.service = identifierSvc
+
+    async def on_post(self, req, resp, multisig_id):
+        """
+        Record that a member has submitted their signature for a multisig identifier.
+
+        Path parameters:
+            id — The multisig identifier AID
+
+        Request body (multipart/form-data):
+            doc  — JSON part: additional metadata (optional)
+            icp  — binary part: raw CESR-encoded ICP bytes
+
+        The account_aid is derived from req.context.aid (authenticated caller).
+
+        Response (200): updated MultisigIdentifier document with signature_received flag set.
+        Response (401): if the account is not authorized to sign this multisig.
+        Response (404): if the multisig identifier is not found.
+        """
+        # Get the account_aid from the authenticated context
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account AID not found in request context.",
+            )
+        account_aid = account.aid
+        body = await req.get_media()
+
+        if "ixn_said" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn' part is required."
+            )
+        if "mailbox_said" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'mailbox' part is required."
+            )
+        if "registrar_said" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'registrar' part is required."
+            )
+
+        try:
+            multisig = self.service.add_multisig_registry_signatures(
+                multisig_id=multisig_id,
+                account_aid=account_aid,  # type: ignore
+                ixn_said=body["ixn_said"],
+                ixn_siger=Siger(qb64=body.get("ixn_siger", "")),
+                mailbox_said=body["mailbox_said"],
+                mailbox_siger=Siger(qb64=body.get("mailbox_siger", "")),
+                registrar_said=body["registrar_said"],
+                registrar_siger=Siger(qb64=body.get("registrar_siger", "")),
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except PermissionError as e:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description=str(e),
+            )
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_200
         resp.content_type = "application/json"
         resp.media = _serialize_multisig(multisig)
 
@@ -803,15 +864,15 @@ class MultisigIdentifierCredentialCollectionEnd:
         ixn: bytes | None = None
         credential: bytes | None = None
         grant: bytes | None = None
-        for part in form:
+        async for part in form:
             if part.name == "iss":
-                iss = part.get_data()
+                iss = await part.get_data()
             elif part.name == "ixn":
-                ixn = part.get_data()
+                ixn = await part.get_data()
             elif part.name == "credential":
-                credential = part.get_data()
+                credential = await part.get_data()
             elif part.name == "grant":
-                grant = part.get_data()
+                grant = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -897,10 +958,10 @@ class MultisigIdentifierCredentialCollectionEnd:
         ixn: bytes | None = None
         body = dict()
 
-        for part in form:
+        async for part in form:
             if part.name == "body":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         body.update(json_data)
                     else:
@@ -914,7 +975,7 @@ class MultisigIdentifierCredentialCollectionEnd:
                         description="The 'body' part must have content-type application/json.",
                     )
             elif part.name == "ixn":
-                ixn = part.get_data()
+                ixn = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -1181,10 +1242,10 @@ class MultisigIdentifierWitnessCollectionEnd:
 
         data = {}
         rot: bytes | None = None
-        for part in form:
+        async for part in form:
             if part.name == "data":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         data.update(json_data)
                     else:
@@ -1198,7 +1259,7 @@ class MultisigIdentifierWitnessCollectionEnd:
                         description="The 'data' part must have content-type application/json.",
                     )
             elif part.name == "rot":
-                rot = part.get_data()
+                rot = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",

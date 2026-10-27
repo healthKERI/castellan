@@ -76,12 +76,12 @@ class JSONSchemaCollectionEnd:
             form = await req.get_media()
             schema_raw: bytes = b""
 
-            for part in form:
+            async for part in form:
                 if part.name == "schema.cesr":
                     if part.content_type and part.content_type.startswith(
                         "application/octet-stream"
                     ):
-                        schema_raw = part.get_data()
+                        schema_raw = await part.get_data()
                     else:
                         raise falcon.HTTPBadRequest(
                             title="Bad Request",

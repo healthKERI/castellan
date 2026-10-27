@@ -103,10 +103,10 @@ class ReceivedCredentialCollectionEnd:
             doc = {}
             acdc = None
 
-            for part in form:
+            async for part in form:
                 if part.name == "doc":
                     if part.content_type.startswith("application/json"):
-                        json_data = part.get_media()
+                        json_data = await part.get_media()
                         if isinstance(json_data, dict):
                             doc.update(json_data)
                         else:
@@ -115,7 +115,7 @@ class ReceivedCredentialCollectionEnd:
                                 description="The doc part must be a valid JSON object.",
                             )
                 elif part.name == "acdc":
-                    acdc = part.get_data()
+                    acdc = await part.get_data()
                 else:
                     raise falcon.HTTPBadRequest(
                         title="Bad Request",

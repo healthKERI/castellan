@@ -15,8 +15,12 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 from bson import ObjectId
-from keri import kering
+from keri import kering, core
 from keri.app import habbing
+
+from keri.core import Siger, Tholder
+from keri.core.coring import Seqner, Saider
+from keri.core.eventing import messagize, SealEvent
 from keri.core.serdering import SerderKERI, SerderACDC
 from keri.help import ogler
 from mongoengine import (
@@ -82,6 +86,8 @@ class MultisigMember(EmbeddedDocument):
     public_key = StringField(required=False)
     current_signature = StringField(required=False)
     grant_signature = StringField(required=False)
+    mbx_signature = StringField(required=False)
+    rgr_signature = StringField(required=False)
     current_lead = BooleanField(default=False)
 
 
@@ -116,6 +122,29 @@ class MultisigIdentifier(UploadedIdentifier):
 
     witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
     witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
+
+    def will_satisfy_threshold(self):
+        logger.info("Checking if threshold will be satisfied")
+        signed_indices = []
+        signatures = []
+        for member in self.members:
+            if member.current_signature is not None:
+                logger.info("Found a signature for member")
+                siger = core.Siger(qb64=member.current_signature)
+                signed_indices.append(siger.index)
+                signatures.append(member.current_signature)
+
+        logger.info(f"Signed indices: {signed_indices}")
+        # Combine signed indices with local user's index to check if threshold would be satisfied
+        tholder = Tholder(sith=self.key_state.get("kt"))
+        will_satisfy_threshold = tholder.satisfy(signed_indices)
+
+        logger.info(
+            f"Signed indices: {signed_indices}, "
+            f"will satisfy threshold: {will_satisfy_threshold}"
+        )
+
+        return will_satisfy_threshold
 
 
 class IdentifierService:
@@ -624,31 +653,54 @@ class IdentifierService:
         self,
         multisig_id: str,
         account_aid: str,
-        vcp: bytes,
-        ixn: bytes,
-        mailbox: bytes,
-        registrar: bytes,
+        vcp: dict,
+        ixn: dict,
+        ixn_siger: Siger,
+        mailbox: dict,
+        mailbox_siger: Siger,
+        registrar: dict,
+        registrar_siger: Siger,
         body: dict,
     ) -> MultisigIdentifier:
         """
         Create a credential registry for a multisig identifier.
 
+        This method handles the creation of a TEL (Transaction Event Log) registry
+        for issuing credentials from a multisig identifier. It processes multiple
+        KERI events required for registry setup: the VCP (registry inception), IXN
+        (interaction event anchoring the registry), mailbox role declaration, and
+        registrar role declaration.
+
+        If the signing member's signature alone satisfies the multisig threshold,
+        the registry is immediately finalized and all events are parsed into the
+        local KEL/TEL. Otherwise, the events and signature are stored as pending,
+        awaiting additional member signatures.
+
         Args:
-            multisig_id: The ID of the multisig identifier.
-            account_aid: The AID of the account creating the registry.
-            vcp: Raw CESR-encoded registry inception event bytes.
-            ixn: Raw CESR-encoded interaction event bytes.
-            mailbox: Raw CESR-encoded mailbox event bytes.
-            registrar: Raw CESR-encoded registrar event bytes.
-            body: Additional metadata (optional).
+            multisig_id: The MongoDB ObjectId of the multisig identifier document.
+            account_aid: The AID of the account initiating registry creation. Must
+                be a member of the multisig.
+            vcp: The registry inception event (VCP) as a dict (KERI SAD).
+            ixn: The interaction event anchoring the registry as a dict (KERI SAD).
+            ixn_siger: The Siger (signature) object for the interaction event.
+            mailbox: The mailbox role reply event as a dict (KERI SAD).
+            mailbox_siger: The Siger (signature) object for the mailbox event.
+            registrar: The registrar role reply event as a dict (KERI SAD).
+            registrar_siger: The Siger (signature) object for the registrar event.
+            body: Additional metadata dict containing 'name' (registry name).
 
         Returns:
-            The updated MultisigIdentifier document with vcp and current_event set.
+            The updated MultisigIdentifier document. If threshold was satisfied,
+            the registry field is populated and current_event is cleared. If
+            pending signatures are needed, current_event contains the IXN,
+            current_tel_event contains the VCP, and the member's signatures
+            are stored in their respective fields.
 
         Raises:
-            ValueError: If required parameters are missing or events cannot be parsed.
-            NotFoundError: If the multisig identifier is not found.
-            PermissionError: If the account is not authorized (not in members list).
+            ValueError: If required parameters are missing or events fail to parse.
+            NotFoundError: If the multisig identifier does not exist.
+            PermissionError: If account_aid is not a member of the multisig.
+            RuntimeError: If parser/kvy are not configured when threshold is met.
         """
         if not multisig_id:
             raise ValueError("multisig_id is required")
@@ -665,6 +717,7 @@ class IdentifierService:
         if "name" not in body:
             raise ValueError("registry name is require")
 
+        logger.info("Creating registry, all values provided")
         registry_name = body["name"]
 
         # Load the multisig identifier
@@ -673,6 +726,7 @@ class IdentifierService:
         except DoesNotExist:
             raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
 
+        logger.info(f"Multisig identifier loaded: {multisig_id}")
         # Verify account_aid is in the members list
         member_idx = -1
         for idx, member in enumerate(multisig.members):
@@ -685,87 +739,200 @@ class IdentifierService:
                 f"Account {account_aid} is not authorized to create registry for this multisig"
             )
 
+        logger.info(
+            f"Account {account_aid} is authorized to create registry for this multisig with idx: {member_idx}"
+        )
         # Parse the all the events
         try:
-            vcp_event = SerderKERI(raw=bytes(vcp))
-            attachment = vcp[vcp_event.size :]
+            vcp_event = SerderKERI(sad=vcp)
         except Exception as e:
             raise ValueError(f"Failed to parse vcp event: {e}")
 
+        logger.info(f"VCP event parsed: {vcp_event.pretty()}")
         try:
-            ixn_event = SerderKERI(raw=bytes(ixn))
+            ixn_event = SerderKERI(sad=ixn)
         except Exception as e:
             raise ValueError(f"Failed to parse ixn event: {e}")
         try:
-            mailbox_event = SerderKERI(raw=bytes(mailbox))
+            mailbox_event = SerderKERI(sad=mailbox)
         except Exception as e:
             raise ValueError(f"Failed to parse mailbox event: {e}")
 
         try:
-            registrar_event = SerderKERI(raw=bytes(registrar))
+            registrar_event = SerderKERI(sad=registrar)
         except Exception as e:
             raise ValueError(f"Failed to parse registrar event: {e}")
 
-        # Determine if 1 signature is enough and if so complete the event.
-        member_aid = multisig.members[member_idx].member_aid
-        tholder = self.hby.kevers[member_aid].tholder
-        if tholder.satisfy([member_idx]):
-            # Validate the KEL
-            if self.parser is None or self.kvy is None:
-                raise RuntimeError(
-                    "IdentifierService requires parser and kvy to process KEL"
-                )
+        logger.info(
+            f"Updating registry for multisig {multisig_id} by account {account_aid}"
+        )
 
-            try:
-                self.parser.parse(ims=bytearray(ixn), kvy=self.kvy, local=True)
-                self.parser.parse(ims=bytearray(vcp), kvy=self.kvy, local=True)
-                self.parser.parse(ims=bytearray(mailbox), kvy=self.kvy, local=True)
-                self.parser.parse(ims=bytearray(registrar), kvy=self.kvy, local=True)
+        # Update the multisig with the registry events
+        multisig.current_event = ixn_event.ked
+        multisig.members[member_idx].current_signature = ixn_siger.qb64
+        multisig.members[member_idx].current_lead = True
+        multisig.current_metadata = dict(
+            registry_name=registry_name, registry_said=vcp_event.said
+        )
+        multisig.current_tel_event = vcp_event.ked
+        multisig.mbx = mailbox_event.ked
+        multisig.members[member_idx].mbx_signature = mailbox_siger.qb64
+        multisig.rgr = registrar_event.ked
+        multisig.members[member_idx].rgr_signature = registrar_siger.qb64
 
-            except Exception as e:
-                raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+        if multisig.will_satisfy_threshold():
+            self.commit_multisig_registry(multisig)
 
-            multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
-            multisig.current_event = None
-            for member in multisig.members:
-                member.public_key = None
-                member.current_signature = None
-                member.current_lead = False
+        multisig.save()
 
-            multisig.registry = Registry(
-                registry_pre=vcp_event.pre,
-                registry_said=vcp_event.said,
-                registry_name=registry_name,
-                vcp=vcp_event.ked,
-                attachment=attachment,
-            )
-            multisig.mailbox = True
-            multisig.registrar = True
-
-            multisig.save()
-
-            self.kelSvc.capture_kel(multisig.aid)
-            self.kelSvc.scan_for_delegates(multisig.aid)
-            self.kelSvc.capture_rpys(multisig.aid)
-
-        else:
-            # Update the multisig with the registry events
-            multisig.current_event = ixn_event.ked
-            multisig.members[member_idx].current_signature = ixn[
-                ixn_event.size :
-            ].decode("utf-8")
-            multisig.members[member_idx].current_lead = True
-            multisig.current_metadata = dict(registry_name=registry_name)
-            multisig.current_tel_event = vcp_event.ked
-            multisig.mbx = mailbox_event.ked
-            multisig.rgr = registrar_event.ked
-            multisig.save()
-
-            logger.info(
-                f"Created registry for multisig {multisig_id} by account {account_aid}"
-            )
+        logger.info(
+            f"Created registry for multisig {multisig_id} by account {account_aid}"
+        )
 
         return multisig
+
+    def add_multisig_registry_signatures(
+        self,
+        multisig_id: str,
+        account_aid: str,
+        ixn_said: str,
+        ixn_siger: Siger,
+        mailbox_said: str,
+        mailbox_siger: Siger,
+        registrar_said: str,
+        registrar_siger: Siger,
+    ):
+        # Load the multisig identifier
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        logger.info(f"Multisig identifier loaded: {multisig_id}")
+        # Verify account_aid is in the members list
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to create registry for this multisig"
+            )
+
+        if (
+            multisig.current_event.get("d") != ixn_said
+            or multisig.mbx.get("d") != mailbox_said
+            or multisig.rgr.get("d") != registrar_said
+        ):
+            raise PermissionError(
+                f"Interaction {ixn_said} is not the current event for this multisig"
+            )
+
+        multisig.members[member_idx].current_signature = ixn_siger.qb64
+        multisig.members[member_idx].mbx_signature = mailbox_siger.qb64
+        multisig.members[member_idx].rgr_signature = registrar_siger.qb64
+
+        if multisig.will_satisfy_threshold():
+            self.commit_multisig_registry(multisig)
+
+        multisig.save()
+
+        return multisig
+
+    def commit_multisig_registry(self, multisig: MultisigIdentifier):
+        if self.parser is None or self.kvy is None:
+            raise RuntimeError(
+                "IdentifierService requires parser and kvy to process KEL"
+            )
+
+        vcp_serder = SerderKERI(sad=multisig.current_tel_event)
+        ixn_serder = SerderKERI(sad=multisig.current_event)
+        mbx_serder = SerderKERI(sad=multisig.mbx)
+        rgr_serder = SerderKERI(sad=multisig.rgr)
+
+        couple = Seqner(sn=ixn_serder.sn).qb64b + Saider(qb64=ixn_serder.said).qb64b
+
+        vcp = bytearray(vcp_serder.raw)
+        vcp.extend(
+            core.Counter(
+                core.Codens.SealSourceCouples, count=1, gvrsn=kering.Vrsn_1_0
+            ).qb64b
+        )
+        vcp.extend(couple)
+
+        seal = SealEvent(
+            i=ixn_serder.pre, s="{:x}".format(ixn_serder.sn), d=ixn_serder.said
+        )
+
+        mailbox = messagize(
+            mbx_serder,
+            sigers=[
+                Siger(qb64=member.mbx_signature)
+                for member in multisig.members
+                if member.mbx_signature is not None
+            ],
+            seal=seal,
+        )
+        registrar = messagize(
+            rgr_serder,
+            sigers=[
+                Siger(qb64=member.rgr_signature)
+                for member in multisig.members
+                if member.rgr_signature is not None
+            ],
+            seal=seal,
+        )
+
+        try:
+            self.kvy.processEvent(
+                serder=ixn_serder,
+                sigers=[
+                    Siger(qb64=member.current_signature)
+                    for member in multisig.members
+                    if member.current_signature is not None
+                ],
+            )
+
+            self.parser.parse(ims=bytearray(vcp))
+            self.parser.parse(ims=bytearray(mailbox), local=True)
+            self.parser.parse(ims=bytearray(registrar), local=True)
+
+        except Exception as e:
+            logger.exception(f"An error occurred parsing KEL into Kevery: {e}")
+            raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+
+        multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
+        multisig.current_event = None
+        multisig.current_tel_event = None
+        multisig.mbx = None
+        multisig.rgr = None
+        for member in multisig.members:
+            member.public_key = None
+            member.current_signature = None
+            member.mbx_signature = None
+            member.rgr_signature = None
+            member.current_signature = None
+            member.current_lead = False
+
+        multisig.registry = Registry(
+            registry_pre=vcp_serder.pre,
+            registry_said=vcp_serder.said,
+            registry_name=multisig.current_metadata.get("registry_name"),
+            vcp=vcp_serder.ked,
+            attachment="",
+        )
+
+        multisig.current_metadata = None
+        multisig.mailbox = True
+        multisig.registrar = True
+
+        multisig.save()
+
+        self.kelSvc.capture_kel(multisig.aid)
+        self.kelSvc.scan_for_delegates(multisig.aid)
+        self.kelSvc.capture_rpys(multisig.aid)
 
     @staticmethod
     def issue_multisig_credential(

@@ -67,13 +67,13 @@ class RegistrarTELEnd:
             tel: bytes = b""
             kel: bytes = b""
 
-            for part in form:
+            async for part in form:
                 logger.info(
                     f"RegistrarEnd: parsing tel with {part.name } - {part.content_type}"
                 )
                 if part.name == "doc":
                     if part.content_type.startswith("application/json"):
-                        json_data = part.get_media()
+                        json_data = await part.get_media()
                         if isinstance(json_data, dict):
                             doc.update(json_data)
                         else:
@@ -82,9 +82,9 @@ class RegistrarTELEnd:
                                 description="The doc part is not a valid JSON dictionary",
                             )
                 elif part.name == "tel":
-                    tel = part.get_data()
+                    tel = await part.get_data()
                 elif part.name == "kel":
-                    kel = part.get_data()
+                    kel = await part.get_data()
                 else:
                     raise falcon.HTTPBadRequest(
                         title="Bad Request",

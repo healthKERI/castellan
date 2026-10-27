@@ -6,6 +6,7 @@ REST endpoint handlers for /account - Account management.
 """
 
 import falcon
+from falcon.asgi.multipart import MultipartForm
 from keri.help import ogler
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
@@ -83,14 +84,14 @@ class AccountCollectionEnd:
 
         Response (201): serialized UploadedIdentifier document.
         """
-        form = await req.get_media()
+        form: MultipartForm = await req.get_media()
 
         doc = {}
         kel = None
-        for part in form:
+        async for part in form:
             if part.name == "data":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         doc.update(json_data)
                     else:
@@ -104,7 +105,7 @@ class AccountCollectionEnd:
                         description="The 'doc' part must have content-type application/json.",
                     )
             elif part.name == "kel":
-                kel = part.get_data()
+                kel = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",

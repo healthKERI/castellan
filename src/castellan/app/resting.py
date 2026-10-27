@@ -5,9 +5,7 @@ castellan.app.resting module
 Falcon ASGI application factory and service wiring for the castellan credential server.
 """
 
-import asyncio
 import os
-from contextlib import asynccontextmanager
 
 import falcon.asgi
 from keri import kering
@@ -16,7 +14,6 @@ from keri.help import ogler
 from keri.peer import exchanging
 from keri.vdr import credentialing, verifying
 from keri.vdr.eventing import Tevery
-from sentinel.core import oobiing
 
 from castellan.app.api.account import AccountCollectionEnd, AccountResourceEnd
 from castellan.app.api.health import HealthEnd
@@ -31,6 +28,7 @@ from castellan.app.api.identifier import (
     MultisigIdentifierWitnessCollectionEnd,
     MultisigIdentifierWitnessResourceEnd,
     MultisigIdentifierCredentialCollectionEnd,
+    MultisigRegsitrySignatureCollectionEnd,
 )
 from castellan.app.api.issued_credential import (
     IssuedCredentialCollectionEnd,
@@ -50,6 +48,7 @@ from castellan.app.api.registrar import (
     RegistrarTELEnd,
 )
 from castellan.app.api.schema_field_tracking import SchemaFieldTrackingEnd
+from castellan.app.tasking import CastellanBackgroundWorker, LifespanMiddleware
 from castellan.core.authing import Authenticater, SignatureValidationComponent
 from castellan.core.basing import databaseInit
 from castellan.core.haberying import Hby
@@ -69,25 +68,6 @@ from castellan.core.services.schema_field_tracking_service import (
 from castellan.core.services.schema_service import SchemaService
 
 logger = ogler.getLogger()
-
-
-def _make_escrow_task(process_fn, interval=0.5):
-    """Create an async task factory for escrow processing.
-
-    Args:
-        process_fn: Synchronous function to call for escrow processing.
-        interval: Sleep interval between processing cycles (default 0.5s).
-
-    Returns:
-        An async callable that runs the escrow processing loop.
-    """
-
-    async def escrow_loop():
-        while True:
-            await asyncio.sleep(interval)
-            process_fn()
-
-    return escrow_loop
 
 
 def create_app(
@@ -227,7 +207,9 @@ def create_app(
     )
 
     # Existing credential routes
-    falcon_app.add_route("/issued-credentials", IssuedCredentialCollectionEnd(issued_svc))
+    falcon_app.add_route(
+        "/issued-credentials", IssuedCredentialCollectionEnd(issued_svc)
+    )
     falcon_app.add_route(
         "/issued-credentials/{said}", IssuedCredentialResourceEnd(issued_svc)
     )
@@ -265,6 +247,10 @@ def create_app(
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/registries",
         MultisigIdentifierRegistryCollectionEnd(identifier_svc),
+    )
+    falcon_app.add_route(
+        "/multisig/identifiers/{multisig_id}/registries/signatures",
+        MultisigRegsitrySignatureCollectionEnd(identifier_svc),
     )
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/credentials",
@@ -312,49 +298,12 @@ def create_app(
     # ------------------------------------------------------------------ #
     # Background task factories                                          #
     # ------------------------------------------------------------------ #
-    oobiery = oobiing.Oobiery(hby=hby, rvy=rvy)
-
-    kvy_escrow_task = _make_escrow_task(kvy.processEscrows)
-    tvy_escrow_task = _make_escrow_task(tvy.processEscrows)
-
-    # Store components on app for lifespan access
-    falcon_app.oobiery = oobiery
-    falcon_app.kvy_escrow_loop = kvy_escrow_task
-    falcon_app.tvy_escrow_loop = tvy_escrow_task
+    worker = CastellanBackgroundWorker(hby=hby, kvy=kvy, tvy=tvy, rvy=rvy)
+    falcon_app.add_middleware(LifespanMiddleware(worker))
 
     logger.info("Castellan ASGI app created")
-    return falcon_app, [oobiery, kvy_escrow_task, tvy_escrow_task]
-
-
-@asynccontextmanager
-async def lifespan(falcon_app):
-    """ASGI lifespan context manager for background task management."""
-    tasks = []
-
-    # Start oobiery tasks
-    oobiery_tasks = falcon_app.oobiery.start()
-    tasks.extend(oobiery_tasks)
-
-    # Start escrow processing tasks
-    tasks.append(asyncio.create_task(falcon_app.kvy_escrow_loop()))
-    tasks.append(asyncio.create_task(falcon_app.tvy_escrow_loop()))
-
-    logger.info(f"Started {len(tasks)} background tasks")
-
-    yield
-
-    # Shutdown: cancel all tasks
-    for task in tasks:
-        task.cancel()
-
-    # Wait for tasks to complete cancellation
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Stop oobiery (closes httpx client)
-    await falcon_app.oobiery.stop()
-
-    logger.info("Background tasks stopped")
+    return falcon_app
 
 
 # Module-level app for uvicorn
-app, _background_tasks = create_app()
+app = create_app()
