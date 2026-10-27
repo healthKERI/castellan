@@ -163,10 +163,12 @@ class TestAccountResourceEnd:
         mock_account.created_at = None
 
         self.service.update_account.return_value = mock_account
-        self.req.get_media = AsyncMock(return_value={
-            "email": "alice@updated.com",
-            "last_name": "Updated",
-        })
+        self.req.get_media = AsyncMock(
+            return_value={
+                "email": "alice@updated.com",
+                "last_name": "Updated",
+            }
+        )
         resp = Mock()
 
         await self.end.on_post(self.req, resp, "EAccountAID")
@@ -192,11 +194,13 @@ class TestAccountResourceEnd:
         mock_account.created_at = None
 
         self.service.update_account.return_value = mock_account
-        self.req.get_media = AsyncMock(return_value={
-            "aid": "ENewAID",  # Should be filtered out
-            "kel": "new-kel-data",  # Should be filtered out
-            "email": "alice@updated.com",
-        })
+        self.req.get_media = AsyncMock(
+            return_value={
+                "aid": "ENewAID",  # Should be filtered out
+                "kel": "new-kel-data",  # Should be filtered out
+                "email": "alice@updated.com",
+            }
+        )
         resp = Mock()
 
         await self.end.on_post(self.req, resp, "EAccountAID")
@@ -219,10 +223,12 @@ class TestAccountResourceEnd:
     @pytest.mark.asyncio
     async def test_on_post_returns_400_when_no_updatable_fields(self):
         """Test POST /accounts/{aid} returns 400 when only aid/kel provided"""
-        self.req.get_media = AsyncMock(return_value={
-            "aid": "ENewAID",
-            "kel": "new-kel-data",
-        })
+        self.req.get_media = AsyncMock(
+            return_value={
+                "aid": "ENewAID",
+                "kel": "new-kel-data",
+            }
+        )
         resp = Mock()
 
         with pytest.raises(falcon.HTTPBadRequest):
@@ -268,7 +274,9 @@ class TestAccountResourceEnd:
         self.service.update_account.return_value = None
         # get_account returns the current account
         self.service.get_account.return_value = mock_account
-        self.req.get_media = AsyncMock(return_value={"email": "alice@example.com"})  # Same value, no change
+        self.req.get_media = AsyncMock(
+            return_value={"email": "alice@example.com"}
+        )  # Same value, no change
         resp = Mock()
 
         await self.end.on_post(self.req, resp, "EAccountAID")

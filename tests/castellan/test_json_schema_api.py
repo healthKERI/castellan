@@ -14,6 +14,7 @@ from castellan.core.services.custom.custom_errors import NotFoundError
 
 class AsyncIterator:
     """Helper class to create an async iterator from a list."""
+
     def __init__(self, items):
         self.items = items
         self.index = 0
@@ -116,7 +117,9 @@ class TestJsonSchemaCollectionEnd:
         mock_part = Mock()
         mock_part.name = "schema.cesr"
         mock_part.content_type = "application/octet-stream"
-        mock_part.get_data = AsyncMock(return_value=b'{"$id": "ESAID123", "$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}')
+        mock_part.get_data = AsyncMock(
+            return_value=b'{"$id": "ESAID123", "$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}'
+        )
 
         self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
 
@@ -242,7 +245,9 @@ class TestJsonSchemaCollectionEnd:
         mock_part = Mock()
         mock_part.name = "schema.cesr"
         mock_part.content_type = "application/octet-stream"
-        mock_part.get_data = AsyncMock(return_value=b'{"$id": "ESAID123", "type": "object"}')
+        mock_part.get_data = AsyncMock(
+            return_value=b'{"$id": "ESAID123", "type": "object"}'
+        )
 
         self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
 

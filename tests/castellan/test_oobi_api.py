@@ -65,7 +65,9 @@ class TestOobiDispatchEnd:
 
     @pytest.mark.asyncio
     @patch("castellan.app.api.oobi.KeyEventLogService.get_aid")
-    async def test_on_get_raises_404_when_neither_aid_nor_schema_found(self, mock_get_aid):
+    async def test_on_get_raises_404_when_neither_aid_nor_schema_found(
+        self, mock_get_aid
+    ):
         mock_get_aid.side_effect = Aid.DoesNotExist()
         self.issued_svc.get_credential_stream.side_effect = NotFoundError("Not found")
         self.received_svc.get_credential_stream.side_effect = NotFoundError("Not found")
