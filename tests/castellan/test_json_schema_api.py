@@ -1,6 +1,6 @@
 # -*- encoding: utf-8 -*-
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import falcon
 import pytest
@@ -12,6 +12,23 @@ from castellan.app.api.json_schema import (
 from castellan.core.services.custom.custom_errors import NotFoundError
 
 
+class AsyncIterator:
+    """Helper class to create an async iterator from a list."""
+    def __init__(self, items):
+        self.items = items
+        self.index = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.index >= len(self.items):
+            raise StopAsyncIteration
+        item = self.items[self.index]
+        self.index += 1
+        return item
+
+
 class TestJsonSchemaCollectionEnd:
     """Test suite for JsonSchemaCollectionEnd (GET /schemas and POST /schemas)"""
 
@@ -20,7 +37,8 @@ class TestJsonSchemaCollectionEnd:
         self.end = JSONSchemaCollectionEnd(self.service)
         self.req = Mock()
 
-    def test_on_get_returns_paginated_schemas(self):
+    @pytest.mark.asyncio
+    async def test_on_get_returns_paginated_schemas(self):
         """Test GET /schemas returns paginated list of schemas"""
         mock_schema1 = Mock()
         mock_schema1.said = "ESAID1"
@@ -37,7 +55,7 @@ class TestJsonSchemaCollectionEnd:
         self.req.get_param_as_list.return_value = None
         resp = Mock()
 
-        self.end.on_get(self.req, resp)
+        await self.end.on_get(self.req, resp)
 
         assert resp.status == falcon.HTTP_200
         assert resp.content_type == "application/json"
@@ -59,7 +77,8 @@ class TestJsonSchemaCollectionEnd:
             ],
         }
 
-    def test_on_get_with_pagination_params(self):
+    @pytest.mark.asyncio
+    async def test_on_get_with_pagination_params(self):
         """Test GET /schemas respects pagination parameters"""
         self.service.list_schemas.return_value = ([], 42, 5)
         self.req.get_param_as_int.side_effect = lambda k, default: (
@@ -68,7 +87,7 @@ class TestJsonSchemaCollectionEnd:
         self.req.get_param_as_list.return_value = ["-created_at"]
         resp = Mock()
 
-        self.end.on_get(self.req, resp)
+        await self.end.on_get(self.req, resp)
 
         self.service.list_schemas.assert_called_once_with(
             page=1,
@@ -79,7 +98,8 @@ class TestJsonSchemaCollectionEnd:
         assert resp.media["page"] == 1
         assert resp.media["num_pages"] == 5
 
-    def test_on_get_handles_service_error(self):
+    @pytest.mark.asyncio
+    async def test_on_get_handles_service_error(self):
         """Test GET /schemas handles service errors"""
         self.service.list_schemas.side_effect = Exception("Database error")
         self.req.get_param_as_int.side_effect = lambda k, default: default
@@ -87,17 +107,18 @@ class TestJsonSchemaCollectionEnd:
         resp = Mock()
 
         with pytest.raises(falcon.HTTPInternalServerError):
-            self.end.on_get(self.req, resp)
+            await self.end.on_get(self.req, resp)
 
+    @pytest.mark.asyncio
     @patch("castellan.app.api.json_schema.Schemer")
-    def test_on_post_uploads_schema_successfully(self, mock_schemer_cls):
+    async def test_on_post_uploads_schema_successfully(self, mock_schemer_cls):
         """Test POST /schemas successfully uploads a schema"""
         mock_part = Mock()
         mock_part.name = "schema.cesr"
         mock_part.content_type = "application/octet-stream"
-        mock_part.get_data.return_value = b'{"$id": "ESAID123", "$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}'
+        mock_part.get_data = AsyncMock(return_value=b'{"$id": "ESAID123", "$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}')
 
-        self.req.get_media.return_value = [mock_part]
+        self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
 
         # Mock the Schemer to return parsed schema data
         mock_schemer = Mock()
@@ -120,7 +141,7 @@ class TestJsonSchemaCollectionEnd:
 
         resp = Mock()
 
-        self.end.on_post(self.req, resp)
+        await self.end.on_post(self.req, resp)
 
         mock_schemer_cls.assert_called_once_with(
             raw=b'{"$id": "ESAID123", "$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}'
@@ -143,61 +164,66 @@ class TestJsonSchemaCollectionEnd:
             "created_at": "2024-01-15T10:30:00",
         }
 
-    def test_on_post_rejects_wrong_content_type(self):
+    @pytest.mark.asyncio
+    async def test_on_post_rejects_wrong_content_type(self):
         """Test POST /schemas rejects non-octet-stream content type"""
         mock_part = Mock()
         mock_part.name = "schema.cesr"
         mock_part.content_type = "text/plain"
 
-        self.req.get_media.return_value = [mock_part]
+        self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
         resp = Mock()
 
         with pytest.raises(falcon.HTTPBadRequest):
-            self.end.on_post(self.req, resp)
+            await self.end.on_post(self.req, resp)
 
-    def test_on_post_rejects_unexpected_form_part(self):
+    @pytest.mark.asyncio
+    async def test_on_post_rejects_unexpected_form_part(self):
         """Test POST /schemas rejects unexpected form parts"""
         mock_part = Mock()
         mock_part.name = "unexpected"
 
-        self.req.get_media.return_value = [mock_part]
+        self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
         resp = Mock()
 
         with pytest.raises(falcon.HTTPBadRequest):
-            self.end.on_post(self.req, resp)
+            await self.end.on_post(self.req, resp)
 
-    def test_on_post_rejects_missing_schema_part(self):
+    @pytest.mark.asyncio
+    async def test_on_post_rejects_missing_schema_part(self):
         """Test POST /schemas rejects missing schema.cesr part"""
-        self.req.get_media.return_value = []
+        self.req.get_media = AsyncMock(return_value=AsyncIterator([]))
         resp = Mock()
 
         with pytest.raises(falcon.HTTPBadRequest):
-            self.end.on_post(self.req, resp)
+            await self.end.on_post(self.req, resp)
 
+    @pytest.mark.asyncio
     @patch("castellan.app.api.json_schema.Schemer")
-    def test_on_post_rejects_invalid_schema_bytes(self, mock_schemer_cls):
+    async def test_on_post_rejects_invalid_schema_bytes(self, mock_schemer_cls):
         """Test POST /schemas rejects invalid schema bytes"""
         mock_part = Mock()
         mock_part.name = "schema.cesr"
         mock_part.content_type = "application/octet-stream"
-        mock_part.get_data.return_value = b"invalid bytes"
+        mock_part.get_data = AsyncMock(return_value=b"invalid bytes")
 
-        self.req.get_media.return_value = [mock_part]
+        self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
         mock_schemer_cls.side_effect = Exception("Invalid schema format")
         resp = Mock()
 
         with pytest.raises(falcon.HTTPInternalServerError):
-            self.end.on_post(self.req, resp)
+            await self.end.on_post(self.req, resp)
 
+    @pytest.mark.asyncio
     @patch("castellan.app.api.json_schema.Schemer")
-    def test_on_post_rejects_schema_without_id_field(self, mock_schemer_cls):
+    async def test_on_post_rejects_schema_without_id_field(self, mock_schemer_cls):
         """Test POST /schemas rejects schema without $id field"""
         mock_part = Mock()
         mock_part.name = "schema.cesr"
         mock_part.content_type = "application/octet-stream"
-        mock_part.get_data.return_value = b'{"type": "object"}'
+        mock_part.get_data = AsyncMock(return_value=b'{"type": "object"}')
 
-        self.req.get_media.return_value = [mock_part]
+        self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
 
         # Mock Schemer to return sed without $id
         mock_schemer = Mock()
@@ -207,17 +233,18 @@ class TestJsonSchemaCollectionEnd:
         resp = Mock()
 
         with pytest.raises(falcon.HTTPBadRequest):
-            self.end.on_post(self.req, resp)
+            await self.end.on_post(self.req, resp)
 
+    @pytest.mark.asyncio
     @patch("castellan.app.api.json_schema.Schemer")
-    def test_on_post_handles_service_error(self, mock_schemer_cls):
+    async def test_on_post_handles_service_error(self, mock_schemer_cls):
         """Test POST /schemas handles service errors"""
         mock_part = Mock()
         mock_part.name = "schema.cesr"
         mock_part.content_type = "application/octet-stream"
-        mock_part.get_data.return_value = b'{"$id": "ESAID123", "type": "object"}'
+        mock_part.get_data = AsyncMock(return_value=b'{"$id": "ESAID123", "type": "object"}')
 
-        self.req.get_media.return_value = [mock_part]
+        self.req.get_media = AsyncMock(return_value=AsyncIterator([mock_part]))
 
         # Mock Schemer to return valid schema with $id
         mock_schemer = Mock()
@@ -228,7 +255,7 @@ class TestJsonSchemaCollectionEnd:
         resp = Mock()
 
         with pytest.raises(falcon.HTTPInternalServerError):
-            self.end.on_post(self.req, resp)
+            await self.end.on_post(self.req, resp)
 
 
 class TestJsonSchemaResourceEnd:
@@ -239,7 +266,8 @@ class TestJsonSchemaResourceEnd:
         self.end = JsonSchemaResourceEnd(self.service)
         self.req = Mock()
 
-    def test_on_get_returns_schema_as_json(self):
+    @pytest.mark.asyncio
+    async def test_on_get_returns_schema_as_json(self):
         """Test GET /schemas/{said} returns schema as JSON"""
         mock_schema = Mock()
         mock_schema.said = "ESAID123"
@@ -251,7 +279,7 @@ class TestJsonSchemaResourceEnd:
         self.req.get_param_as_bool.return_value = False
         resp = Mock()
 
-        self.end.on_get(self.req, resp, "ESAID123")
+        await self.end.on_get(self.req, resp, "ESAID123")
 
         self.service.get_schema.assert_called_once_with("ESAID123")
         assert resp.status == falcon.HTTP_200
@@ -261,7 +289,8 @@ class TestJsonSchemaResourceEnd:
             "created_at": "2024-01-15T10:30:00",
         }
 
-    def test_on_get_returns_schema_as_stream(self):
+    @pytest.mark.asyncio
+    async def test_on_get_returns_schema_as_stream(self):
         """Test GET /schemas/{said}?stream=true returns raw schema bytes"""
         mock_schema = Mock()
         mock_schema.said = "ESAID123"
@@ -271,51 +300,56 @@ class TestJsonSchemaResourceEnd:
         self.req.get_param_as_bool.return_value = True
         resp = Mock()
 
-        self.end.on_get(self.req, resp, "ESAID123")
+        await self.end.on_get(self.req, resp, "ESAID123")
 
         assert resp.status == falcon.HTTP_200
         assert resp.content_type == "application/schema+json"
         assert resp.data == b'{"$id":"ESAID123","type":"object"}'
 
-    def test_on_get_raises_404_when_not_found(self):
+    @pytest.mark.asyncio
+    async def test_on_get_raises_404_when_not_found(self):
         """Test GET /schemas/{said} raises 404 when schema not found"""
         self.service.get_schema.side_effect = NotFoundError("Schema not found")
         self.req.get_param_as_bool.return_value = False
         resp = Mock()
 
         with pytest.raises(falcon.HTTPNotFound):
-            self.end.on_get(self.req, resp, "unknown")
+            await self.end.on_get(self.req, resp, "unknown")
 
-    def test_on_get_handles_service_error(self):
+    @pytest.mark.asyncio
+    async def test_on_get_handles_service_error(self):
         """Test GET /schemas/{said} handles service errors"""
         self.service.get_schema.side_effect = Exception("Database error")
         self.req.get_param_as_bool.return_value = False
         resp = Mock()
 
         with pytest.raises(falcon.HTTPInternalServerError):
-            self.end.on_get(self.req, resp, "ESAID123")
+            await self.end.on_get(self.req, resp, "ESAID123")
 
-    def test_on_delete_removes_schema(self):
+    @pytest.mark.asyncio
+    async def test_on_delete_removes_schema(self):
         """Test DELETE /schemas/{said} successfully removes a schema"""
         resp = Mock()
 
-        self.end.on_delete(self.req, resp, "ESAID123")
+        await self.end.on_delete(self.req, resp, "ESAID123")
 
         self.service.delete_schema.assert_called_once_with("ESAID123")
         assert resp.status == falcon.HTTP_204
 
-    def test_on_delete_raises_404_when_not_found(self):
+    @pytest.mark.asyncio
+    async def test_on_delete_raises_404_when_not_found(self):
         """Test DELETE /schemas/{said} raises 404 when schema not found"""
         self.service.delete_schema.side_effect = NotFoundError("Schema not found")
         resp = Mock()
 
         with pytest.raises(falcon.HTTPNotFound):
-            self.end.on_delete(self.req, resp, "unknown")
+            await self.end.on_delete(self.req, resp, "unknown")
 
-    def test_on_delete_handles_service_error(self):
+    @pytest.mark.asyncio
+    async def test_on_delete_handles_service_error(self):
         """Test DELETE /schemas/{said} handles service errors"""
         self.service.delete_schema.side_effect = Exception("Database error")
         resp = Mock()
 
         with pytest.raises(falcon.HTTPInternalServerError):
-            self.end.on_delete(self.req, resp, "ESAID123")
+            await self.end.on_delete(self.req, resp, "ESAID123")

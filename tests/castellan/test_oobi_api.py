@@ -26,13 +26,14 @@ class TestOobiDispatchEnd:
         )
         self.req = Mock()
 
+    @pytest.mark.asyncio
     @patch("castellan.app.api.oobi.KeyEventLogService.get_aid")
-    def test_on_get_resolves_known_aid_as_keystate(self, mock_get_aid):
+    async def test_on_get_resolves_known_aid_as_keystate(self, mock_get_aid):
         mock_get_aid.return_value = Mock()
         self.kel_svc.get_full_stream.return_value = bytearray(b"kel-bytes")
         resp = Mock()
 
-        self.end.on_get(self.req, resp, "test_aid")
+        await self.end.on_get(self.req, resp, "test_aid")
 
         mock_get_aid.assert_called_once_with("test_aid")
         self.kel_svc.get_full_stream.assert_called_once_with("test_aid")
@@ -44,8 +45,9 @@ class TestOobiDispatchEnd:
         self.received_svc.get_credential_stream.assert_not_called()
         self.schema_svc.get_schema.assert_not_called()
 
+    @pytest.mark.asyncio
     @patch("castellan.app.api.oobi.KeyEventLogService.get_aid")
-    def test_on_get_resolves_known_schema(self, mock_get_aid):
+    async def test_on_get_resolves_known_schema(self, mock_get_aid):
         mock_get_aid.side_effect = Aid.DoesNotExist()
         self.issued_svc.get_credential_stream.side_effect = NotFoundError("Not found")
         self.received_svc.get_credential_stream.side_effect = NotFoundError("Not found")
@@ -54,15 +56,16 @@ class TestOobiDispatchEnd:
         self.schema_svc.get_schema.return_value = mock_schema
         resp = Mock()
 
-        self.end.on_get(self.req, resp, "ESAID123")
+        await self.end.on_get(self.req, resp, "ESAID123")
 
         self.schema_svc.get_schema.assert_called_once_with("ESAID123")
         assert resp.status == falcon.HTTP_200
         assert resp.content_type == "application/schema+json"
         assert resp.data == b"schema-bytes"
 
+    @pytest.mark.asyncio
     @patch("castellan.app.api.oobi.KeyEventLogService.get_aid")
-    def test_on_get_raises_404_when_neither_aid_nor_schema_found(self, mock_get_aid):
+    async def test_on_get_raises_404_when_neither_aid_nor_schema_found(self, mock_get_aid):
         mock_get_aid.side_effect = Aid.DoesNotExist()
         self.issued_svc.get_credential_stream.side_effect = NotFoundError("Not found")
         self.received_svc.get_credential_stream.side_effect = NotFoundError("Not found")
@@ -70,7 +73,7 @@ class TestOobiDispatchEnd:
         resp = Mock()
 
         with pytest.raises(falcon.HTTPNotFound):
-            self.end.on_get(self.req, resp, "unknown-id")
+            await self.end.on_get(self.req, resp, "unknown-id")
 
 
 class TestServerOobiEnd:
@@ -82,14 +85,15 @@ class TestServerOobiEnd:
         self.end = ServerOobiEnd(self.server_svc, self.kel_svc)
         self.req = Mock()
 
-    def test_on_get_resolves_active_server(self):
+    @pytest.mark.asyncio
+    async def test_on_get_resolves_active_server(self):
         mock_server = Mock()
         mock_server.aid = "server_aid_123"
         self.server_svc.get_active_server.return_value = mock_server
         self.kel_svc.get_full_stream.return_value = bytearray(b"server-kel-bytes")
         resp = Mock()
 
-        self.end.on_get(self.req, resp)
+        await self.end.on_get(self.req, resp)
 
         self.kel_svc.get_full_stream.assert_called_once_with("server_aid_123")
         assert resp.status == falcon.HTTP_200
@@ -97,16 +101,18 @@ class TestServerOobiEnd:
         resp.set_header.assert_called_once_with(OOBI_AID_HEADER, "server_aid_123")
         assert resp.data == bytes(b"server-kel-bytes")
 
-    def test_on_get_raises_404_when_no_active_server(self):
+    @pytest.mark.asyncio
+    async def test_on_get_raises_404_when_no_active_server(self):
         self.server_svc.get_active_server.return_value = None
         resp = Mock()
 
         with pytest.raises(falcon.HTTPNotFound):
-            self.end.on_get(self.req, resp)
+            await self.end.on_get(self.req, resp)
 
         self.kel_svc.get_full_stream.assert_not_called()
 
-    def test_on_get_raises_404_when_kel_stream_empty(self):
+    @pytest.mark.asyncio
+    async def test_on_get_raises_404_when_kel_stream_empty(self):
         mock_server = Mock()
         mock_server.aid = "server_aid_123"
         self.server_svc.get_active_server.return_value = mock_server
@@ -114,4 +120,4 @@ class TestServerOobiEnd:
         resp = Mock()
 
         with pytest.raises(falcon.HTTPNotFound):
-            self.end.on_get(self.req, resp)
+            await self.end.on_get(self.req, resp)
