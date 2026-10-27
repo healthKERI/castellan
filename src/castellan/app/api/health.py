@@ -11,7 +11,7 @@ import falcon
 class HealthEnd:
     """Simple liveness/readiness health check endpoint."""
 
-    def on_get(self, req, rep):
+    async def on_get(self, req, rep):
         """
         GET /health
 

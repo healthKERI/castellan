@@ -33,7 +33,7 @@ class RegistrarEnd:
     def __init__(self, registrarSvc: RegistrarService):
         self.service = registrarSvc
 
-    def on_get(self, _, resp):
+    async def on_get(self, _, resp):
         resp.status = falcon.HTTP_200
         resp.media = self.service.get_identity()
 
@@ -46,7 +46,7 @@ class RegistrarTELEnd:
     def __init__(self, registrarSvc: RegistrarService):
         self.service = registrarSvc
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         issuer = req.get_param("issuer", required=True)
         issuer_sn = req.get_param_as_int("issuer_sn", required=True)
         try:
@@ -72,7 +72,7 @@ class RegistrarCredentialEnd:
     def __init__(self, registrarSvc: RegistrarService):
         self.service = registrarSvc
 
-    def on_get(self, req, resp, said):
+    async def on_get(self, req, resp, said):
         registry = req.get_param_as_bool("registry", default=False)
         tel = req.get_param_as_bool("tel", default=False)
         try:
@@ -99,7 +99,7 @@ class RegistrarCredentialSearchEnd:
     def __init__(self, registrarSvc: RegistrarService):
         self.service = registrarSvc
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         issuer = req.get_param("issuer", required=True)
         issuer_sn = req.get_param_as_int("issuer_sn", required=True)
         try:
@@ -125,7 +125,7 @@ class RegistrarOOBIEnd:
     def __init__(self, registrarSvc: RegistrarService):
         self.service = registrarSvc
 
-    def on_get(self, _req, resp, aid):
+    async def on_get(self, _req, resp, aid):
         try:
             oobi_bytes = self.service.get_oobi_cesr(aid)
         except NotFoundError:

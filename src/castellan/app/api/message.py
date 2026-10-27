@@ -52,7 +52,7 @@ class MessageCollectionEnd:
     def __init__(self, msgSvc):
         self.service = msgSvc
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """
         Post a CESR-encoded message to a recipient AID.
 
@@ -97,7 +97,7 @@ class MessageCollectionEnd:
         multisig_alias = req.get_param("multisig_alias", default="")
 
         try:
-            raw = req.bounded_stream.read()
+            raw = await req.stream.read()
             logger.debug(
                 f"POST /messages: read {len(raw) if raw else 0} bytes from request body"
             )
@@ -150,7 +150,7 @@ class MessageCollectionEnd:
         resp.content_type = "application/json"
         resp.media = _serialize(msg)
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """
         Poll messages for the given AID.
 
@@ -216,7 +216,7 @@ class MessageResourceEnd:
     def __init__(self, msgSvc):
         self.service = msgSvc
 
-    def on_put(self, req, resp, id):
+    async def on_put(self, req, resp, id):
         """Mark a message as read."""
         try:
             msg = self.service.mark_read(id)
@@ -233,7 +233,7 @@ class MessageResourceEnd:
         resp.content_type = "application/json"
         resp.media = _serialize(msg)
 
-    def on_delete(self, req, resp, id):
+    async def on_delete(self, req, resp, id):
         """Delete a message."""
         try:
             self.service.delete_message(id)

@@ -40,10 +40,10 @@ class Authenticater:
             return self.account_aid
 
         headers = request.headers
-        if "ESSR-SENDER" not in headers:
+        if "essr-sender" not in headers:
             return None
 
-        return headers["ESSR-SENDER"]
+        return headers["essr-sender"]
 
 
 class SignatureValidationComponent:
@@ -57,7 +57,7 @@ class SignatureValidationComponent:
         self.authn = auth
         self.allowed = allowed if allowed is not None else []
 
-    def process_request(self, req, rep):
+    async def process_request(self, req, rep):
         """Process request to ensure has a valid signature from aid
 
         Parameters:

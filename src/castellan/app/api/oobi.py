@@ -50,7 +50,7 @@ class OobiDispatchEnd:
         self.issued_svc = issued_svc
         self.received_svc = received_svc
 
-    def on_get(self, _, resp, said):
+    async def on_get(self, _, resp, said):
         try:
             KeyEventLogService.get_aid(said)
             ims = self.kel_svc.get_full_stream(said)
@@ -110,7 +110,7 @@ class ServerOobiEnd:
         self.server_svc = server_svc
         self.kel_svc = kel_svc
 
-    def on_get(self, _, resp):
+    async def on_get(self, _, resp):
         server = self.server_svc.get_active_server()
         if server is None:
             raise falcon.HTTPNotFound(
@@ -143,7 +143,7 @@ class CastellanOobiEnd:
     def __init__(self, hab):
         self.hab = hab
 
-    def on_get(self, _, resp):
+    async def on_get(self, _, resp):
         ims = self.hab.replyToOobi(aid=self.hab.pre, role=Roles.controller)
         if not ims:
             raise falcon.HTTPNotFound(

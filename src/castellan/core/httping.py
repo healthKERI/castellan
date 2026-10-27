@@ -50,7 +50,7 @@ class HttpEnd:
         self.identifier_service = identifier_service
         self.parser = parser
 
-    def on_post(self, req, rep):
+    async def on_post(self, req, rep):
         """
         Handles POST for KERI event messages.
 
@@ -122,7 +122,7 @@ class HttpEnd:
                 rep.set_header("Content-Type", "application/json")
                 rep.status = falcon.HTTP_204
 
-    def on_put(self, req, rep):
+    async def on_put(self, req, rep):
         """
         Handles PUT for KERI mbx event messages.
 

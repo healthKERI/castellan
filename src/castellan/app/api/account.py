@@ -6,6 +6,7 @@ REST endpoint handlers for /account - Account management.
 """
 
 import falcon
+from falcon.asgi.multipart import MultipartForm
 from keri.help import ogler
 
 from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
@@ -33,7 +34,7 @@ class AccountCollectionEnd:
     def __init__(self, account_service):
         self.service = account_service
 
-    def on_get(self, req, resp):
+    async def on_get(self, req, resp):
         """List all accounts.
 
         Returns:
@@ -70,7 +71,7 @@ class AccountCollectionEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_post(self, req, resp):
+    async def on_post(self, req, resp):
         """
         Upload a whisper identifier to castellan.
 
@@ -83,14 +84,14 @@ class AccountCollectionEnd:
 
         Response (201): serialized UploadedIdentifier document.
         """
-        form = req.get_media()
+        form: MultipartForm = await req.get_media()
 
         doc = {}
         kel = None
-        for part in form:
+        async for part in form:
             if part.name == "data":
                 if part.content_type.startswith("application/json"):
-                    json_data = part.get_media()
+                    json_data = await part.get_media()
                     if isinstance(json_data, dict):
                         doc.update(json_data)
                     else:
@@ -104,7 +105,7 @@ class AccountCollectionEnd:
                         description="The 'doc' part must have content-type application/json.",
                     )
             elif part.name == "kel":
-                kel = part.get_data()
+                kel = await part.get_data()
             else:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -158,7 +159,7 @@ class AccountResourceEnd:
     def __init__(self, service):
         self.service = service
 
-    def on_get(self, req, resp, aid):
+    async def on_get(self, req, resp, aid):
         """Get an account.
 
         Path params:
@@ -182,7 +183,7 @@ class AccountResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_post(self, req, resp, aid):
+    async def on_post(self, req, resp, aid):
         """Update an account.
 
         Path params:
@@ -205,7 +206,7 @@ class AccountResourceEnd:
             400: Validation error
         """
         try:
-            body = req.media
+            body = await req.get_media()
             if not body:
                 raise falcon.HTTPBadRequest(
                     title="Bad Request",
@@ -248,7 +249,7 @@ class AccountResourceEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-    def on_delete(self, req, resp, aid):
+    async def on_delete(self, req, resp, aid):
         """Delete an account."""
         try:
             self.service.delete_account(aid)
