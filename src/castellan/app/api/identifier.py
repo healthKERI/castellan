@@ -129,6 +129,7 @@ def _serialize_member(member):
         "mbx_signature": member.mbx_signature,
         "rgr_signature": member.rgr_signature,
         "public_key": member.public_key if hasattr(member, "public_key") else None,
+        "next_key_hash": member.next_key_hash,
     }
 
     return data
@@ -139,6 +140,7 @@ def _serialize_witness(witness) -> dict:
         "witness_aid": witness.witness_aid,
         "witness_alias": witness.witness_alias,
         "witness_oobi": witness.witness_oobi,
+        "witness_totps": witness.witness_totps,
     }
 
 
@@ -789,6 +791,8 @@ class MultisigRegsitrySignatureCollectionEnd:
                 title="Bad Request", description="'registrar' part is required."
             )
 
+        witness_receipts = body.get("witness_receipts")
+
         try:
             multisig = self.service.add_multisig_registry_signatures(
                 multisig_id=multisig_id,
@@ -799,6 +803,7 @@ class MultisigRegsitrySignatureCollectionEnd:
                 mailbox_siger=Siger(qb64=body.get("mailbox_siger", "")),
                 registrar_said=body["registrar_said"],
                 registrar_siger=Siger(qb64=body.get("registrar_siger", "")),
+                witness_receipts=witness_receipts,
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
@@ -1119,38 +1124,27 @@ class IdentifierResourceEnd:
         resp.status = falcon.HTTP_204
 
 
-class MultisigIdentifierWitnessCollectionEnd:
+class RotateWitnessInfoEnd:
     """Handles POST /multisig/identifiers/{multisig_id}/witnesses — set witness rotation."""
 
     def __init__(self, identifierSvc):
         self.service = identifierSvc
 
-    async def on_post(self, req, resp, multisig_id):
-        """
-        Set witness rotation configuration for a multisig identifier.
-
-        Path parameters:
-            multisig_id — The multisig identifier ID
-
-        Request body (application/json):
-            {
-              "adds": [
-                {"witness_aid": "...", "witness_alias": "...", "witness_url": "..."},
-                ...
-              ],
-              "cuts": ["witness_aid_1", "witness_aid_2"],
-              "witness_threshold": 2
-            }
-
-        Response (200): updated MultisigIdentifier document.
-        Response (400): if current_event is not empty or validation fails.
-        Response (404): if the multisig identifier is not found.
-        """
+    async def _parse_request(self, req, multisig_id):
         body = await req.get_media()
 
+        public_key = body.get("public_key")
+        next_key_hash = body.get("next_key_hash")
         adds = body.get("adds")
         cuts = body.get("cuts")
         witness_threshold = body.get("witness_threshold")
+
+        # Validate keys
+        if public_key is None or next_key_hash is None:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description="public_key and next_key_hash are required.",
+            )
 
         # Validate adds
         if adds is None or not isinstance(adds, list):
@@ -1199,9 +1193,47 @@ class MultisigIdentifierWitnessCollectionEnd:
                 description="'witness_threshold' must be >= 0.",
             )
 
+        return public_key, next_key_hash, adds, cuts, witness_threshold
+
+    async def on_post(self, req, resp, multisig_id):
+        """
+        Set witness rotation configuration for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (application/json):
+            {
+              "adds": [
+                {"witness_aid": "...", "witness_alias": "...", "witness_url": "..."},
+                ...
+              ],
+              "cuts": ["witness_aid_1", "witness_aid_2"],
+              "witness_threshold": 2
+            }
+
+        Response (200): updated MultisigIdentifier document.
+        Response (400): if current_event is not empty or validation fails.
+        Response (404): if the multisig identifier is not found.
+        """
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
+            )
+
+        account_aid = account.aid
+
+        public_key, next_key_hash, adds, cuts, witness_threshold = (
+            await self._parse_request(req, multisig_id)
+        )
         try:
             multisig = self.service.set_witness_rotate(
                 multisig_id=multisig_id,
+                account_aid=account_aid,
+                public_key=public_key,
+                next_key_hash=next_key_hash,
                 adds=adds,
                 cuts=cuts,
                 witness_threshold=witness_threshold,
@@ -1225,7 +1257,7 @@ class MultisigIdentifierWitnessCollectionEnd:
 
     async def on_put(self, req, resp, multisig_id):
         """
-        Complete a witness rotation for a multisig identifier.
+        Add approval of existing witness rotate by adding public_key / next hash
 
         Path parameters:
             multisig_id — The multisig identifier ID
@@ -1238,44 +1270,28 @@ class MultisigIdentifierWitnessCollectionEnd:
         Response (400): if required parts are missing or parse failure.
         Response (404): if the multisig identifier is not found.
         """
-        form = await req.get_media()
-
-        data = {}
-        rot: bytes | None = None
-        async for part in form:
-            if part.name == "data":
-                if part.content_type.startswith("application/json"):
-                    json_data = await part.get_media()
-                    if isinstance(json_data, dict):
-                        data.update(json_data)
-                    else:
-                        raise falcon.HTTPBadRequest(
-                            title="Bad Request",
-                            description="The 'data' part must be a JSON object.",
-                        )
-                else:
-                    raise falcon.HTTPBadRequest(
-                        title="Bad Request",
-                        description="The 'data' part must have content-type application/json.",
-                    )
-            elif part.name == "rot":
-                rot = await part.get_data()
-            else:
-                raise falcon.HTTPBadRequest(
-                    title="Bad Request",
-                    description=f"Unexpected form part '{part.name}'.",
-                )
-
-        if not rot:
-            raise falcon.HTTPBadRequest(
-                title="Bad Request", description="'rot' part is required."
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
             )
 
+        account_aid = account.aid
+
+        public_key, next_key_hash, adds, cuts, witness_threshold = (
+            await self._parse_request(req, multisig_id)
+        )
+
         try:
-            multisig = self.service.complete_witness_rotate(
+            multisig = self.service.approve_witness_rotate(
                 multisig_id=multisig_id,
-                rot=bytes(rot),
-                witness_data=data.get("witnesses", []),
+                account_aid=account_aid,
+                public_key=public_key,
+                next_key_hash=next_key_hash,
+                adds=adds,
+                cuts=cuts,
+                witness_threshold=witness_threshold,
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
@@ -1295,8 +1311,78 @@ class MultisigIdentifierWitnessCollectionEnd:
         resp.media = _serialize_multisig(multisig)
 
 
-class MultisigIdentifierWitnessResourceEnd:
+class RotateWitnessSignEnd:
     """Handles POST /multisig/identifiers/{multisig_id}/witnesses/rotate — complete witness rotation."""
 
     def __init__(self, identifierSvc):
         self.service = identifierSvc
+
+    async def on_post(self, req, resp, multisig_id):
+        """
+        Set witness rotation configuration for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (application/json):
+            {
+              "adds": [
+                {"witness_aid": "...", "witness_alias": "...", "witness_url": "..."},
+                ...
+              ],
+              "cuts": ["witness_aid_1", "witness_aid_2"],
+              "witness_threshold": 2
+            }
+
+        Response (200): updated MultisigIdentifier document.
+        Response (400): if current_event is not empty or validation fails.
+        Response (404): if the multisig identifier is not found.
+        """
+        body = await req.get_media()
+        rot = body.get("rot")
+        sig = body.get("sig")
+        witness_receipts = body.get("witness_receipts")
+
+        if not rot:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'rot' part is required."
+            )
+
+        if not sig:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'sig' part is required."
+            )
+
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
+            )
+
+        account_aid = account.aid
+
+        try:
+            multisig = self.service.sign_witness_rotate(
+                multisig_id=multisig_id,
+                account_aid=account_aid,
+                rot=rot,
+                sig=sig,
+                witness_receipts=witness_receipts,
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_200
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)

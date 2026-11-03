@@ -25,8 +25,8 @@ from castellan.app.api.identifier import (
     MultisigIdentifierResourceEnd,
     MultisigIdentifierSignatureCollectionEnd,
     MultisigIdentifierRegistryCollectionEnd,
-    MultisigIdentifierWitnessCollectionEnd,
-    MultisigIdentifierWitnessResourceEnd,
+    RotateWitnessInfoEnd,
+    RotateWitnessSignEnd,
     MultisigIdentifierCredentialCollectionEnd,
     MultisigRegsitrySignatureCollectionEnd,
 )
@@ -258,11 +258,11 @@ def create_app(
     )
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/witnesses",
-        MultisigIdentifierWitnessCollectionEnd(identifier_svc),
+        RotateWitnessInfoEnd(identifier_svc),
     )
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/witnesses/rotate",
-        MultisigIdentifierWitnessResourceEnd(identifier_svc),
+        RotateWitnessSignEnd(identifier_svc),
     )
 
     # JSON Schema management routes

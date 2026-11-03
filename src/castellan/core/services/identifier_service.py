@@ -9,6 +9,7 @@ Castellan stores these so that all whisper instances can discover peers and
 exchange OOBIs before constructing a group multisig.
 """
 
+import json
 import math
 from dataclasses import asdict
 from datetime import datetime
@@ -84,6 +85,7 @@ class MultisigMember(EmbeddedDocument):
     signing_threshold = StringField(required=False)
     rotation_threshold = StringField(required=False)
     public_key = StringField(required=False)
+    next_key_hash = StringField(required=False)
     current_signature = StringField(required=False)
     grant_signature = StringField(required=False)
     mbx_signature = StringField(required=False)
@@ -95,6 +97,7 @@ class Witness(EmbeddedDocument):
     witness_aid = StringField(required=True)
     witness_alias = StringField(required=True)
     witness_oobi = StringField(required=True)
+    witness_totps = ListField(StringField(), required=False)
 
 
 class Witnesses(EmbeddedDocument):
@@ -122,19 +125,17 @@ class MultisigIdentifier(UploadedIdentifier):
 
     witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
     witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
+    witness_receipts = ListField(StringField(), default=[], required=False)
 
     def will_satisfy_threshold(self):
-        logger.info("Checking if threshold will be satisfied")
         signed_indices = []
         signatures = []
         for member in self.members:
             if member.current_signature is not None:
-                logger.info("Found a signature for member")
                 siger = core.Siger(qb64=member.current_signature)
                 signed_indices.append(siger.index)
                 signatures.append(member.current_signature)
 
-        logger.info(f"Signed indices: {signed_indices}")
         # Combine signed indices with local user's index to check if threshold would be satisfied
         tholder = Tholder(sith=self.key_state.get("kt"))
         will_satisfy_threshold = tholder.satisfy(signed_indices)
@@ -801,6 +802,7 @@ class IdentifierService:
         mailbox_siger: Siger,
         registrar_said: str,
         registrar_siger: Siger,
+        witness_receipts: list,
     ):
         # Load the multisig identifier
         try:
@@ -833,6 +835,8 @@ class IdentifierService:
         multisig.members[member_idx].current_signature = ixn_siger.qb64
         multisig.members[member_idx].mbx_signature = mailbox_siger.qb64
         multisig.members[member_idx].rgr_signature = registrar_siger.qb64
+        if witness_receipts:
+            multisig.witness_receipts = witness_receipts
 
         if multisig.will_satisfy_threshold():
             self.commit_multisig_registry(multisig)
@@ -847,8 +851,10 @@ class IdentifierService:
                 "IdentifierService requires parser and kvy to process KEL"
             )
 
+        # Round trip current_event with json to avoid some messiness between MongoEngine and dataclass asdict
+        sad = json.loads(json.dumps(multisig.current_event))
+        ixn_serder = SerderKERI(sad=sad)
         vcp_serder = SerderKERI(sad=multisig.current_tel_event)
-        ixn_serder = SerderKERI(sad=multisig.current_event)
         mbx_serder = SerderKERI(sad=multisig.mbx)
         rgr_serder = SerderKERI(sad=multisig.rgr)
 
@@ -893,6 +899,7 @@ class IdentifierService:
                     for member in multisig.members
                     if member.current_signature is not None
                 ],
+                wigers=[Siger(qb64=receipt) for receipt in multisig.witness_receipts],
             )
 
             self.parser.parse(ims=bytearray(vcp))
@@ -1143,6 +1150,9 @@ class IdentifierService:
     @staticmethod
     def set_witness_rotate(
         multisig_id: str,
+        account_aid: str,
+        public_key: str,
+        next_key_hash: str,
         adds: list[dict],
         cuts: list[str],
         witness_threshold: int,
@@ -1152,7 +1162,10 @@ class IdentifierService:
 
         Args:
             multisig_id: The ID of the multisig identifier.
-            adds: List of witness dicts with keys: witness_aid, witness_alias, witness_oobi
+            account_aid: The AID of the account making the request.
+            public_key: The public key of the account making the request.
+            next_key_hash: The hash of the next key.
+            adds: List of witness dicts with keys: witness_aid, witness_alias, witness_oobi, witness_totps
             cuts: List of witness AIDs to remove.
             witness_threshold: The new witness threshold.
 
@@ -1168,9 +1181,19 @@ class IdentifierService:
         except DoesNotExist:
             raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
 
-        if multisig.current_event:
+        if multisig.current_event or multisig.witness_rotate:
             raise ValueError(
                 "Cannot set witness rotate while an operation is in progress"
+            )
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to create registry for this multisig"
             )
 
         witness_adds = [
@@ -1178,6 +1201,7 @@ class IdentifierService:
                 witness_aid=w["aid"],
                 witness_alias=w["alias"],
                 witness_oobi=w["oobi"],
+                witness_totps=w["totps"],
             )
             for w in adds
         ]
@@ -1187,46 +1211,193 @@ class IdentifierService:
             cuts=cuts,
             threshold=witness_threshold,
         )
-
         multisig.witness_rotate = witnesses
+
+        multisig.members[member_idx].public_key = public_key
+        multisig.members[member_idx].next_key_hash = next_key_hash
+
         multisig.save()
 
         logger.info(f"Set witness rotate for multisig {multisig_id}")
 
         return multisig
 
-    def complete_witness_rotate(
-        self, multisig_id, rot: bytes, witness_data: list[dict]
+    @staticmethod
+    def approve_witness_rotate(
+        multisig_id: str,
+        account_aid: str,
+        public_key: str,
+        next_key_hash: str,
+        adds: list[dict],
+        witness_threshold: int,
+    ) -> MultisigIdentifier:
+        """
+        Approve the witness rotation configuration for a multisig identifier that has already been set
+
+        All values must match those currently set by the initial set call
+
+        Args:
+            multisig_id: The ID of the multisig identifier.
+            account_aid: The AID of the account making the request.
+            public_key: The public key of the account making the request.
+            next_key_hash: The hash of the next key.
+            adds: List of witness dicts with keys: witness_aid, witness_alias, witness_oobi, witness_totps
+            cuts: List of witness AIDs to remove.
+            witness_threshold: The new witness threshold.
+
+        Returns:
+            The updated MultisigIdentifier document.
+
+        Raises:
+            NotFoundError: If the multisig identifier is not found.
+            ValueError: If current_event is not empty (operation in progress).
+        """
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        if not multisig.witness_rotate:
+            raise ValueError("Cannot approvae without a witness rotate in progress")
+
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to create registry for this multisig"
+            )
+
+        witness_adds = [
+            Witness(
+                witness_aid=w["aid"],
+                witness_alias=w["alias"],
+                witness_oobi=w["oobi"],
+                witness_totps=w["totps"],
+            )
+            for w in adds
+        ]
+
+        if not witness_adds == multisig.witness_rotate.adds:
+            raise ValueError("Witness adds do not match those currently set")
+
+        if not witness_threshold == multisig.witness_rotate.threshold:
+            raise ValueError("Witness threshold does not match those currently set")
+
+        multisig.members[member_idx].public_key = public_key
+        multisig.members[member_idx].next_key_hash = next_key_hash
+
+        multisig.save()
+
+        logger.info(
+            f"Approved witness rotate for multisig {multisig_id} member {member_idx}"
+        )
+
+        return multisig
+
+    def sign_witness_rotate(
+        self,
+        account_aid: str,
+        multisig_id: str,
+        rot: dict,
+        sig: str,
+        witness_receipts: list,
     ):
         try:
             multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
         except DoesNotExist:
             raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
 
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to create registry for this multisig"
+            )
+
+        if multisig.current_event:
+            if multisig.current_event.get("d") != rot.get("d"):
+                raise ValueError("Cannot add signature to different current event.")
+        elif multisig.witness_rotate:
+            if [add["witness_aid"] for add in multisig.witness_rotate.adds] != rot.get(
+                "ba"
+            ):
+                raise ValueError("Incompatible witness AIDs for new rotation event")
+        else:
+            raise ValueError("Invalid state for witness rotation event")
+
+        multisig.current_event = rot
+        multisig.members[member_idx].current_signature = sig
+        if witness_receipts:
+            multisig.witness_receipts = witness_receipts
+
+        for memmber in multisig.members:
+            memmber.public_key = None
+            memmber.next_key_hash = None
+
+        if multisig.will_satisfy_threshold():
+            logger.info(f"Multisig {multisig.id} will satisfy threshold")
+            self.complete_witness_rotate(multisig)
+
+        multisig.save()
+
+        return multisig
+
+    def complete_witness_rotate(
+        self,
+        multisig: MultisigIdentifier,
+    ):
         if self.parser is None or self.kvy is None:
             raise RuntimeError(
                 "IdentifierService requires parser and kvy to process KEL"
             )
 
-        serder = SerderKERI(raw=bytes(rot))
+        # Round trip MongoEngine provided dict because it doesn't play nicely with dataclass asdict.
+        sad = json.loads(json.dumps(multisig.current_event))
+        serder = SerderKERI(sad=sad)
         sn = serder.sn
 
+        logger.info(f"SIGS: {[
+            Siger(qb64=member.current_signature)
+            for member in multisig.members
+            if member.current_signature is not None
+        ]}")
         try:
-            self.parser.parse(ims=bytearray(rot), kvy=self.kvy, local=True)
+            self.kvy.processEvent(
+                serder=serder,
+                sigers=[
+                    Siger(qb64=member.current_signature)
+                    for member in multisig.members
+                    if member.current_signature is not None
+                ],
+                wigers=[Siger(qb64=receipt) for receipt in multisig.witness_receipts],
+            )
             self.kvy.processEscrows()
 
             if int(self.kvy.kevers[multisig.aid].state().s, 16) != sn:
                 raise ValueError(
-                    f"Invalid witness rotate event for multisig {multisig_id}"
+                    f"Invalid witness rotate event for multisig {multisig.id}"
                 )
 
             self.kelSvc.capture_kel(multisig.aid)
             self.kelSvc.scan_for_delegates(multisig.aid)
 
         except Exception as e:
-            raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+
+            logger.exception(e)
+            raise ValueError(
+                f"An error occurred parsing KEL into Kevery while completing witness rotate: {e}"
+            )
 
         multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
+        multisig.witnesses = multisig.witness_rotate.adds
         multisig.current_event = None
         multisig.witness_rotate = None
 
@@ -1234,16 +1405,3 @@ class IdentifierService:
             member.public_key = None
             member.current_signature = None
             member.current_lead = False
-
-        multisig.witnesses = [
-            Witness(
-                witness_aid=w["aid"],
-                witness_alias=w["alias"],
-                witness_oobi=w["oobi"],
-            )
-            for w in witness_data
-        ]
-
-        multisig.save()
-
-        return multisig
