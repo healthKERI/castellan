@@ -793,7 +793,6 @@ class MultisigRegsitrySignatureCollectionEnd:
 
         witness_receipts = body.get("witness_receipts")
 
-
         try:
             multisig = self.service.add_multisig_registry_signatures(
                 multisig_id=multisig_id,
@@ -1226,7 +1225,9 @@ class RotateWitnessInfoEnd:
 
         account_aid = account.aid
 
-        public_key, next_key_hash, adds, cuts, witness_threshold = await self._parse_request(req, multisig_id)
+        public_key, next_key_hash, adds, cuts, witness_threshold = (
+            await self._parse_request(req, multisig_id)
+        )
         try:
             multisig = self.service.set_witness_rotate(
                 multisig_id=multisig_id,
@@ -1278,7 +1279,9 @@ class RotateWitnessInfoEnd:
 
         account_aid = account.aid
 
-        public_key, next_key_hash, adds, cuts, witness_threshold = await self._parse_request(req, multisig_id)
+        public_key, next_key_hash, adds, cuts, witness_threshold = (
+            await self._parse_request(req, multisig_id)
+        )
 
         try:
             multisig = self.service.approve_witness_rotate(
@@ -1350,7 +1353,6 @@ class RotateWitnessSignEnd:
                 title="Bad Request", description="'sig' part is required."
             )
 
-
         account = getattr(req.context, "account", None)
         if not account:
             raise falcon.HTTPUnauthorized(
@@ -1366,7 +1368,7 @@ class RotateWitnessSignEnd:
                 account_aid=account_aid,
                 rot=rot,
                 sig=sig,
-                witness_receipts=witness_receipts
+                witness_receipts=witness_receipts,
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
