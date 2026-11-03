@@ -791,6 +791,9 @@ class MultisigRegsitrySignatureCollectionEnd:
                 title="Bad Request", description="'registrar' part is required."
             )
 
+        witness_receipts = body.get("witness_receipts")
+
+
         try:
             multisig = self.service.add_multisig_registry_signatures(
                 multisig_id=multisig_id,
@@ -801,6 +804,7 @@ class MultisigRegsitrySignatureCollectionEnd:
                 mailbox_siger=Siger(qb64=body.get("mailbox_siger", "")),
                 registrar_said=body["registrar_said"],
                 registrar_siger=Siger(qb64=body.get("registrar_siger", "")),
+                witness_receipts=witness_receipts,
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
