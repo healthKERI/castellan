@@ -28,6 +28,7 @@ from castellan.app.api.identifier import (
     RotateWitnessInfoEnd,
     RotateWitnessSignEnd,
     MultisigIdentifierCredentialCollectionEnd,
+    MultisigCredentialSignatureCollectionEnd,
     MultisigRegsitrySignatureCollectionEnd,
 )
 from castellan.app.api.issued_credential import (
@@ -170,6 +171,7 @@ def create_app(
         issued_svc=issued_svc,
         kelSvc=kel_svc,
         grant_svc=grant_svc,
+        schema_svc=schema_svc,
         parser=parser,
         kvy=kvy,
         tvy=tvy,
@@ -255,6 +257,10 @@ def create_app(
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/credentials",
         MultisigIdentifierCredentialCollectionEnd(identifier_svc),
+    )
+    falcon_app.add_route(
+        "/multisig/identifiers/{multisig_id}/credentials/signatures",
+        MultisigCredentialSignatureCollectionEnd(identifier_svc),
     )
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/witnesses",

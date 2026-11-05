@@ -156,6 +156,7 @@ class IdentifierService:
         account_service,
         issued_svc,
         grant_svc,
+        schema_svc,
         kelSvc=None,
         parser=None,
         kvy=None,
@@ -168,6 +169,7 @@ class IdentifierService:
         self.account_service = account_service
         self.issued_svc = issued_svc
         self.grant_svc = grant_svc
+        self.schema_svc = schema_svc
         self.kelSvc = kelSvc
         self.parser = parser
         self.kvy = kvy
@@ -941,33 +943,51 @@ class IdentifierService:
         self.kelSvc.scan_for_delegates(multisig.aid)
         self.kelSvc.capture_rpys(multisig.aid)
 
-    @staticmethod
-    def issue_multisig_credential(
+    def create_multisig_credential(
+        self,
         multisig_id: str,
         account_aid: str,
-        iss: bytes,
-        ixn: bytes,
-        credential: bytes,
-        grant: bytes,
+        iss: dict,
+        iss_attachment: str,
+        ixn: dict,
+        ixn_siger: Siger,
+        credential: dict,
+        credential_attachment: str,
+        grant: dict,
+        grant_siger: Siger,
     ) -> MultisigIdentifier:
         """
-        Create a credential registry for a multisig identifier.
+        Create a credential for a multisig identifier.
+
+        This method handles the first member's initiation of credential issuance.
+        It stores all events and the member's signatures. If the signing member's
+        signature alone satisfies the multisig threshold, the credential is
+        immediately finalized. Otherwise, the events and signature are stored as
+        pending, awaiting additional member signatures.
 
         Args:
-            multisig_id: The ID of the multisig identifier.
-            account_aid: The AID of the account creating the registry.
-            iss: Raw CESR-encoded issuer event bytes.
-            ixn: Raw CESR-encoded interaction event bytes.
-            credential: Raw CESR-encoded credential event bytes.
-            grant: Raw CESR-encoded grant event bytes.
+            multisig_id: The MongoDB ObjectId of the multisig identifier document.
+            account_aid: The AID of the account initiating credential issuance.
+            iss: The ISS TEL event as a dict (KERI SAD).
+            iss_attachment: The CESR attachment for the ISS event.
+            ixn: The IXN event as a dict (KERI SAD).
+            ixn_siger: The Siger (signature) object for the IXN event.
+            credential: The ACDC credential as a dict (KERI SAD).
+            credential_attachment: The CESR attachment for the credential.
+            grant: The grant EXN event as a dict (KERI SAD).
+            grant_siger: The Siger (signature) object for the grant event.
 
         Returns:
-            The updated MultisigIdentifier document with vcp and current_event set.
+            The updated MultisigIdentifier document. If threshold was satisfied,
+            credential and grant are captured and pending fields cleared. If
+            pending signatures are needed, current_event contains the IXN,
+            current_tel_event contains the ISS, and the member's signatures
+            are stored.
 
         Raises:
-            ValueError: If required parameters are missing or events cannot be parsed.
-            NotFoundError: If the multisig identifier is not found.
-            PermissionError: If the account is not authorized (not in members list).
+            ValueError: If required parameters are missing or events fail to parse.
+            NotFoundError: If the multisig identifier does not exist.
+            PermissionError: If account_aid is not a member of the multisig.
         """
         if not multisig_id:
             raise ValueError("multisig_id is required")
@@ -975,10 +995,14 @@ class IdentifierService:
             raise ValueError("account_aid is required")
         if not iss:
             raise ValueError("iss is required")
+        if not iss_attachment:
+            raise ValueError("iss_attachment is required")
         if not ixn:
             raise ValueError("ixn is required")
         if not credential:
             raise ValueError("credential is required")
+        if not credential_attachment:
+            raise ValueError("credential_attachment is required")
         if not grant:
             raise ValueError("grant is required")
 
@@ -997,83 +1021,98 @@ class IdentifierService:
 
         if member_idx == -1:
             raise PermissionError(
-                f"Account {account_aid} is not authorized to create registry for this multisig"
+                f"Account {account_aid} is not authorized to issue credential for this multisig"
             )
 
-        # Parse the all the events
+        # Parse and validate all the events
         try:
-            iss_event = SerderKERI(raw=bytes(iss))
+            iss_event = SerderKERI(sad=iss)
         except Exception as e:
             raise ValueError(f"Failed to parse iss event: {e}")
 
         try:
-            ixn_event = SerderKERI(raw=bytes(ixn))
+            ixn_event = SerderKERI(sad=ixn)
         except Exception as e:
             raise ValueError(f"Failed to parse ixn event: {e}")
+
         try:
-            credential_event = SerderACDC(raw=bytes(credential))
+            credential_event = SerderACDC(sad=credential)
         except Exception as e:
             raise ValueError(f"Failed to parse credential event: {e}")
 
         try:
-            grant_event = SerderKERI(raw=bytes(grant))
+            grant_event = SerderKERI(sad=grant)
         except Exception as e:
             raise ValueError(f"Failed to parse grant event: {e}")
 
-        # Update the multisig with the registry events
+        logger.info(
+            f"Creating credential for multisig {multisig_id} by account {account_aid}"
+        )
+
+        # Store events and first member's signatures
         multisig.current_event = ixn_event.ked
-        multisig.members[member_idx].current_signature = ixn[ixn_event.size :].decode(
-            "utf-8"
-        )
-        multisig.members[member_idx].grant_signature = grant[grant_event.size :].decode(
-            "utf-8"
-        )
-        multisig.members[member_idx].current_lead = True
         multisig.current_tel_event = iss_event.ked
-        multisig.current_tel_attachment = iss[iss_event.size :].decode("utf-8")
+        multisig.current_tel_attachment = iss_attachment
         multisig.credential = credential_event.sad
-        multisig.credential_attachment = credential[credential_event.size :].decode(
-            "utf-8"
-        )
-        multisig.grant = grant_event.sad
+        multisig.credential_attachment = credential_attachment
+        multisig.grant = grant_event.ked
+        multisig.members[member_idx].current_signature = ixn_siger.qb64
+        multisig.members[member_idx].grant_signature = grant_siger.qb64
+        multisig.members[member_idx].current_lead = True
+
+        if multisig.will_satisfy_threshold():
+            self.commit_multisig_credential(multisig)
+
         multisig.save()
 
         logger.info(
-            f"Created registry for multisig {multisig_id} by account {account_aid}"
+            f"Created credential for multisig {multisig_id} by account {account_aid}"
         )
 
         return multisig
 
-    def complete_multisig_credential(
+    def add_multisig_credential_signatures(
         self,
-        body: dict,
         multisig_id: str,
         account_aid: str,
-        ixn: bytes,
+        ixn_said: str,
+        ixn_siger: Siger,
+        grant_said: str,
+        grant_siger: Siger,
     ) -> MultisigIdentifier:
         """
-        Create a credential registry for a multisig identifier.
+        Add signatures from an additional member for credential issuance.
+
+        This method allows additional members to add their signatures to a pending
+        credential issuance. It validates the SAIDs match the pending events and
+        stores the member's signatures. If the threshold is satisfied after adding
+        the signatures, the credential is committed.
 
         Args:
-            body: The request body containing the interaction event.
-            multisig_id: The ID of the multisig identifier.
-            account_aid: The AID of the account creating the registry.
-            ixn: Raw CESR-encoded interaction event bytes.
+            multisig_id: The MongoDB ObjectId of the multisig identifier document.
+            account_aid: The AID of the account adding signatures.
+            ixn_said: The SAID of the IXN event to verify it matches pending event.
+            ixn_siger: The Siger (signature) object for the IXN event.
+            grant_said: The SAID of the grant event to verify it matches pending event.
+            grant_siger: The Siger (signature) object for the grant event.
 
         Returns:
-            The updated MultisigIdentifier document with vcp and current_event set.
+            The updated MultisigIdentifier document. If threshold was satisfied,
+            credential and grant are captured and pending fields cleared.
 
         Raises:
-            ValueError: If required parameters are missing or events cannot be parsed.
-            NotFoundError: If the multisig identifier is not found.
-            PermissionError: If the account is not authorized (not in members list).
+            ValueError: If SAIDs don't match pending events or no pending credential.
+            NotFoundError: If the multisig identifier does not exist.
+            PermissionError: If account_aid is not a member of the multisig.
         """
         if not multisig_id:
             raise ValueError("multisig_id is required")
         if not account_aid:
             raise ValueError("account_aid is required")
-        if not ixn:
-            raise ValueError("ixn is required")
+        if not ixn_said:
+            raise ValueError("ixn_said is required")
+        if not grant_said:
+            raise ValueError("grant_said is required")
 
         # Load the multisig identifier
         try:
@@ -1081,35 +1120,117 @@ class IdentifierService:
         except DoesNotExist:
             raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
 
-        try:
-            creder = SerderACDC(sad=multisig.credential)
-        except Exception as e:
-            raise ValueError(f"Failed to parse credential: {e}")
+        logger.info(f"Adding credential signatures for multisig {multisig_id}")
 
-        # Validate the KEL
+        # Verify account_aid is in the members list
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to sign for this multisig"
+            )
+
+        # Validate SAIDs match pending events
+        if not multisig.current_event:
+            raise ValueError("No pending credential issuance for this multisig")
+
+        if multisig.current_event.get("d") != ixn_said:
+            raise ValueError(
+                f"IXN SAID {ixn_said} does not match pending event {multisig.current_event.get('d')}"
+            )
+
+        if not multisig.grant:
+            raise ValueError("No pending grant for this multisig")
+
+        if multisig.grant.get("d") != grant_said:
+            raise ValueError(
+                f"Grant SAID {grant_said} does not match pending grant {multisig.grant.get('d')}"
+            )
+
+        # Store member's signatures
+        multisig.members[member_idx].current_signature = ixn_siger.qb64
+        multisig.members[member_idx].grant_signature = grant_siger.qb64
+
+        if multisig.will_satisfy_threshold():
+            self.commit_multisig_credential(multisig)
+
+        multisig.save()
+
+        logger.info(
+            f"Added credential signatures for multisig {multisig_id} by account {account_aid}"
+        )
+
+        return multisig
+
+    def commit_multisig_credential(self, multisig: MultisigIdentifier):
+        """
+        Commit a credential after threshold is satisfied.
+
+        This method reconstructs CESR messages from stored SADs and collected
+        signatures, processes them through the parser/kvy/tvy/verifier, and
+        captures the credential and grant. It clears all pending fields after
+        successful commit.
+
+        Args:
+            multisig: The MultisigIdentifier with pending credential events and
+                      collected signatures that satisfy the threshold.
+
+        Raises:
+            RuntimeError: If parser/kvy are not configured.
+            ValueError: If credential processing fails or credential not saved.
+        """
         if self.parser is None or self.kvy is None:
             raise RuntimeError(
                 "IdentifierService requires parser and kvy to process KEL"
             )
 
-        ixn = bytearray(ixn)
-        iss = bytearray(SerderKERI(sad=multisig.current_tel_event).raw)
+        # Round trip current_event with json to avoid messiness between MongoEngine and dataclass asdict
+        sad = json.loads(json.dumps(multisig.current_event))
+        ixn_serder = SerderKERI(sad=sad)
+        iss_serder = SerderKERI(sad=multisig.current_tel_event)
+        creder = SerderACDC(sad=multisig.credential)
+        grant_serder = SerderKERI(sad=multisig.grant)
+
+        # Build ISS with attachment
+        iss = bytearray(iss_serder.raw)
         iss.extend(multisig.current_tel_attachment.encode("utf-8"))
 
-        acdc = bytearray(SerderACDC(sad=multisig.credential).raw)
+        # Build ACDC with attachment
+        acdc = bytearray(creder.raw)
         acdc.extend(multisig.credential_attachment.encode("utf-8"))
 
-        grant_event = SerderKERI(sad=multisig.grant)
-        grant = bytearray(grant_event.raw)
+        # Build Grant with all member grant signatures
+        kever = self.kvy.kevers.get(ixn_serder.pre)
+        seal = SealEvent(
+            i=kever.prefixer.qb64, s="{:x}".format(kever.lastEst.s), d=kever.lastEst.d
+        )
 
-        for member in multisig.members:
-            if member.grant_signature:
-                grant.extend(member.grant_signature.encode("utf-8"))
-            if member.member_aid != account_aid and member.current_signature:
-                ixn.extend(member.current_signature.encode("utf-8"))
+        grant = messagize(
+            grant_serder,
+            sigers=[
+                Siger(qb64=member.grant_signature)
+                for member in multisig.members
+                if member.grant_signature is not None
+            ],
+            seal=seal,
+        )
 
         try:
-            self.parser.parse(ims=ixn, local=True)
+            # Process IXN with collected signatures
+            self.kvy.processEvent(
+                serder=ixn_serder,
+                sigers=[
+                    Siger(qb64=member.current_signature)
+                    for member in multisig.members
+                    if member.current_signature is not None
+                ],
+            )
+
+            # Process ISS, ACDC, and Grant
             self.parser.parse(ims=iss, local=True)
             self.parser.parse(ims=acdc, local=True)
             self.parser.parse(ims=grant, local=True)
@@ -1118,14 +1239,22 @@ class IdentifierService:
             self.verifier.processEscrows()
 
         except Exception as e:
-            raise ValueError(f"An error occurred parsing KEL into Kevery: {e}")
+            logger.exception(f"An error occurred processing credential: {e}")
+            raise ValueError(f"An error occurred processing credential: {e}")
 
+        # Verify credential saved in reger
         if not self.rgy.reger.saved.get(keys=(creder.said,)):
             raise ValueError("Credential issuance not satisfied with current event")
 
-        self.issued_svc.capture_credential(creder, body)
-        self.grant_svc.capture_grant(grant_event.said)
+        # Capture credential and grant
+        schema = self.schema_svc.get_schema(creder.schema)
+        self.issued_svc.capture_credential(
+            creder,
+            {"schema_said": schema.said, "schema_title": schema.sed.get("title")},
+        )
+        self.grant_svc.capture_grant(grant_serder.said)
 
+        # Clear pending fields
         multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
         multisig.current_event = None
         multisig.current_tel_event = None
@@ -1141,11 +1270,12 @@ class IdentifierService:
 
         multisig.save()
 
+        # Capture KEL
         self.kelSvc.capture_kel(multisig.aid)
         self.kelSvc.scan_for_delegates(multisig.aid)
         self.kelSvc.capture_rpys(multisig.aid)
 
-        return multisig
+        logger.info(f"Committed credential for multisig {multisig.id}")
 
     @staticmethod
     def set_witness_rotate(
