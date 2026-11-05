@@ -1,15 +1,13 @@
 # -*- encoding: utf-8 -*-
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
-from bson import ObjectId
 from mongoengine.errors import DoesNotExist
 
 from castellan.core.services.identifier_service import (
     IdentifierService,
-    UploadedIdentifier,
 )
-from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
+from castellan.core.services.custom.custom_errors import NotFoundError
 
 
 class TestIdentifierServiceUpload:
@@ -28,6 +26,7 @@ class TestIdentifierServiceUpload:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             kelSvc=self.mock_kelSvc,
             parser=self.mock_parser,
             kvy=self.mock_kvy,
@@ -55,6 +54,7 @@ class TestIdentifierServiceUpload:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             parser=None,
             kvy=self.mock_kvy,
         )
@@ -69,6 +69,7 @@ class TestIdentifierServiceUpload:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             parser=self.mock_parser,
             kvy=None,
         )
@@ -86,6 +87,7 @@ class TestIdentifierServiceGet:
             account_service=Mock(),
             issued_svc=Mock(),
             grant_svc=Mock(),
+            schema_svc=Mock(),
         )
 
     @patch("castellan.core.services.identifier_service.UploadedIdentifier.objects")
@@ -116,6 +118,7 @@ class TestIdentifierServiceDelete:
             account_service=Mock(),
             issued_svc=Mock(),
             grant_svc=Mock(),
+            schema_svc=Mock(),
         )
 
     @patch.object(IdentifierService, "get")
@@ -156,6 +159,7 @@ class TestCreateMultisigCredentialValidation:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             kelSvc=self.mock_kelSvc,
             parser=self.mock_parser,
             kvy=self.mock_kvy,
@@ -337,6 +341,7 @@ class TestAddMultisigCredentialSignaturesValidation:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             kelSvc=self.mock_kelSvc,
             parser=self.mock_parser,
             kvy=self.mock_kvy,
@@ -426,6 +431,7 @@ class TestCommitMultisigCredential:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             kelSvc=self.mock_kelSvc,
             parser=self.mock_parser,
             kvy=self.mock_kvy,
@@ -441,6 +447,7 @@ class TestCommitMultisigCredential:
             account_service=Mock(),
             issued_svc=Mock(),
             grant_svc=Mock(),
+            schema_svc=Mock(),
             parser=None,
             kvy=Mock(),
         )
@@ -457,6 +464,7 @@ class TestCommitMultisigCredential:
             account_service=Mock(),
             issued_svc=Mock(),
             grant_svc=Mock(),
+            schema_svc=Mock(),
             parser=Mock(),
             kvy=None,
         )
@@ -483,6 +491,7 @@ class TestJoinMultisig:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             kelSvc=self.mock_kelSvc,
             parser=self.mock_parser,
             kvy=self.mock_kvy,
@@ -545,6 +554,7 @@ class TestSubmitMultisigInception:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             kelSvc=self.mock_kelSvc,
             parser=self.mock_parser,
             kvy=self.mock_kvy,
@@ -607,6 +617,7 @@ class TestCreateMultisigRegistry:
             account_service=self.mock_account_service,
             issued_svc=self.mock_issued_svc,
             grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
             kelSvc=self.mock_kelSvc,
             parser=self.mock_parser,
             kvy=self.mock_kvy,

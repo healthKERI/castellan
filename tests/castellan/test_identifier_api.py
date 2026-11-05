@@ -5,12 +5,7 @@ import falcon
 import pytest
 
 from castellan.app.api.identifier import (
-    IdentifierCollectionEnd,
-    IdentifierResourceEnd,
     IdentifierKelEnd,
-    MultisigIdentifierCollectionEnd,
-    MultisigIdentifierResourceEnd,
-    MultisigIdentifierSignatureCollectionEnd,
     MultisigIdentifierRegistryCollectionEnd,
     MultisigRegsitrySignatureCollectionEnd,
     MultisigIdentifierCredentialCollectionEnd,
@@ -18,7 +13,7 @@ from castellan.app.api.identifier import (
     RotateWitnessInfoEnd,
     RotateWitnessSignEnd,
 )
-from castellan.core.services.custom.custom_errors import ConflictError, NotFoundError
+from castellan.core.services.custom.custom_errors import NotFoundError
 
 
 class TestMultisigIdentifierCredentialCollectionEnd:
@@ -873,7 +868,9 @@ class TestRotateWitnessInfoEnd:
 
         with pytest.raises(falcon.HTTPBadRequest) as exc_info:
             await self.end.on_post(self.req, resp, "multisig123")
-        assert "'adds' is required and must be a list" in str(exc_info.value.description)
+        assert "'adds' is required and must be a list" in str(
+            exc_info.value.description
+        )
 
     @pytest.mark.asyncio
     async def test_on_post_returns_400_when_cuts_not_list(self):
