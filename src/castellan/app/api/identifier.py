@@ -126,6 +126,7 @@ def _serialize_member(member):
         "signing_threshold": member.signing_threshold,
         "rotation_threshold": member.rotation_threshold,
         "current_signature": member.current_signature,
+        "grant_signature": member.grant_signature,
         "mbx_signature": member.mbx_signature,
         "rgr_signature": member.rgr_signature,
         "public_key": member.public_key if hasattr(member, "public_key") else None,
@@ -829,7 +830,7 @@ class MultisigRegsitrySignatureCollectionEnd:
 
 
 class MultisigIdentifierCredentialCollectionEnd:
-    """Handles POST /multisig/identifiers/{multisig_id}/credentials — Issue a credential registry."""
+    """Handles POST /multisig/identifiers/{multisig_id}/credentials — Issue a credential."""
 
     def __init__(self, identifierSvc):
         self.service = identifierSvc
@@ -841,11 +842,15 @@ class MultisigIdentifierCredentialCollectionEnd:
         Path parameters:
             multisig_id — The multisig identifier ID
 
-        Request body (multipart/form-data):
-            iss  — binary part: raw CESR-encoded credential issuance TEL event bytes
-            ixn  — binary part: raw CESR-encoded interaction event bytes
-            credential  — binary part: raw CESR-encoded credential bytes
-            grant  — binary part: raw CESR-encoded grant EXN event bytes
+        Request body (application/json):
+            iss  — dict: ISS TEL event SAD
+            iss_attachment — str: CESR attachment for ISS
+            ixn  — dict: IXN event SAD
+            ixn_siger — str: qb64 signature for IXN
+            credential  — dict: ACDC credential SAD
+            credential_attachment — str: CESR attachment for credential
+            grant  — dict: grant EXN event SAD
+            grant_siger — str: qb64 signature for grant
 
         The account_aid is derived from req.context.account (authenticated caller).
 
@@ -863,52 +868,53 @@ class MultisigIdentifierCredentialCollectionEnd:
             )
         account_aid = account.aid
 
-        form = await req.get_media()
+        body = await req.get_media()
 
-        iss: bytes | None = None
-        ixn: bytes | None = None
-        credential: bytes | None = None
-        grant: bytes | None = None
-        async for part in form:
-            if part.name == "iss":
-                iss = await part.get_data()
-            elif part.name == "ixn":
-                ixn = await part.get_data()
-            elif part.name == "credential":
-                credential = await part.get_data()
-            elif part.name == "grant":
-                grant = await part.get_data()
-            else:
-                raise falcon.HTTPBadRequest(
-                    title="Bad Request",
-                    description=f"Unexpected form part '{part.name}'.",
-                )
-
-        if not iss:
+        if "iss" not in body:
             raise falcon.HTTPBadRequest(
-                title="Bad Request", description="'iss' part is required."
+                title="Bad Request", description="'iss' is required."
             )
-        if not ixn:
+        if "iss_attachment" not in body:
             raise falcon.HTTPBadRequest(
-                title="Bad Request", description="'ixn' part is required."
+                title="Bad Request", description="'iss_attachment' is required."
             )
-        if not credential:
+        if "ixn" not in body:
             raise falcon.HTTPBadRequest(
-                title="Bad Request", description="'credential' part is required."
+                title="Bad Request", description="'ixn' is required."
             )
-        if not grant:
+        if "ixn_siger" not in body:
             raise falcon.HTTPBadRequest(
-                title="Bad Request", description="'grant' part is required."
+                title="Bad Request", description="'ixn_siger' is required."
+            )
+        if "credential" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'credential' is required."
+            )
+        if "credential_attachment" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'credential_attachment' is required."
+            )
+        if "grant" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'grant' is required."
+            )
+        if "grant_siger" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'grant_siger' is required."
             )
 
         try:
-            multisig = self.service.issue_multisig_credential(
+            multisig = self.service.create_multisig_credential(
                 multisig_id=multisig_id,
                 account_aid=account_aid,
-                iss=bytes(iss),
-                ixn=bytes(ixn),
-                credential=bytes(credential),
-                grant=bytes(grant),
+                iss=body.get("iss"),
+                iss_attachment=body.get("iss_attachment"),
+                ixn=body.get("ixn"),
+                ixn_siger=Siger(qb64=body.get("ixn_siger")),
+                credential=body.get("credential"),
+                credential_attachment=body.get("credential_attachment"),
+                grant=body.get("grant"),
+                grant_siger=Siger(qb64=body.get("grant_siger")),
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
@@ -932,20 +938,30 @@ class MultisigIdentifierCredentialCollectionEnd:
         resp.content_type = "application/json"
         resp.media = _serialize_multisig(multisig)
 
-    async def on_put(self, req, resp, multisig_id):
+
+class MultisigCredentialSignatureCollectionEnd:
+    """Handles POST /multisig/identifiers/{multisig_id}/credentials/signatures — add member signatures."""
+
+    def __init__(self, identifierSvc):
+        self.service = identifierSvc
+
+    async def on_post(self, req, resp, multisig_id):
         """
-        Complete the issuance of a credential for a multisig identifier.
+        Add signatures from an additional member for credential issuance.
 
         Path parameters:
             multisig_id — The multisig identifier ID
 
-        Request body (multipart/form-data):
-            ixn  — binary part: raw CESR-encoded interaction event bytes
+        Request body (application/json):
+            ixn_said — str: SAID of the IXN event to verify
+            ixn_siger — str: qb64 signature for IXN
+            grant_said — str: SAID of the grant event to verify
+            grant_siger — str: qb64 signature for grant
 
         The account_aid is derived from req.context.account (authenticated caller).
 
-        Response (201): updated MultisigIdentifier document with iss and current_event.
-        Response (400): if required parts are missing or parse failure.
+        Response (200): updated MultisigIdentifier document.
+        Response (400): if required fields are missing or SAIDs don't match.
         Response (401): if the account is not authorized (not in members list).
         Response (404): if the multisig identifier is not found.
         """
@@ -958,46 +974,33 @@ class MultisigIdentifierCredentialCollectionEnd:
             )
         account_aid = account.aid
 
-        form = await req.get_media()
+        body = await req.get_media()
 
-        ixn: bytes | None = None
-        body = dict()
-
-        async for part in form:
-            if part.name == "body":
-                if part.content_type.startswith("application/json"):
-                    json_data = await part.get_media()
-                    if isinstance(json_data, dict):
-                        body.update(json_data)
-                    else:
-                        raise falcon.HTTPBadRequest(
-                            title="Bad Request",
-                            description="The 'body' part must be a JSON object.",
-                        )
-                else:
-                    raise falcon.HTTPBadRequest(
-                        title="Bad Request",
-                        description="The 'body' part must have content-type application/json.",
-                    )
-            elif part.name == "ixn":
-                ixn = await part.get_data()
-            else:
-                raise falcon.HTTPBadRequest(
-                    title="Bad Request",
-                    description=f"Unexpected form part '{part.name}'.",
-                )
-
-        if not ixn:
+        if "ixn_said" not in body:
             raise falcon.HTTPBadRequest(
-                title="Bad Request", description="'ixn' part is required."
+                title="Bad Request", description="'ixn_said' is required."
+            )
+        if "ixn_siger" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn_siger' is required."
+            )
+        if "grant_said" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'grant_said' is required."
+            )
+        if "grant_siger" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'grant_siger' is required."
             )
 
         try:
-            multisig = self.service.complete_multisig_credential(
-                body=body,
+            multisig = self.service.add_multisig_credential_signatures(
                 multisig_id=multisig_id,
                 account_aid=account_aid,
-                ixn=bytes(ixn),
+                ixn_said=body.get("ixn_said"),
+                ixn_siger=Siger(qb64=body.get("ixn_siger")),
+                grant_said=body.get("grant_said"),
+                grant_siger=Siger(qb64=body.get("grant_siger")),
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))
@@ -1017,7 +1020,7 @@ class MultisigIdentifierCredentialCollectionEnd:
                 description=f"An unexpected error occurred: {e}",
             )
 
-        resp.status = falcon.HTTP_201
+        resp.status = falcon.HTTP_200
         resp.content_type = "application/json"
         resp.media = _serialize_multisig(multisig)
 
