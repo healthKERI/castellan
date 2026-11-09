@@ -30,6 +30,8 @@ from castellan.app.api.identifier import (
     MultisigIdentifierCredentialCollectionEnd,
     MultisigCredentialSignatureCollectionEnd,
     MultisigRegsitrySignatureCollectionEnd,
+    MultisigRevocationCollectionEnd,
+    MultisigRevocationSignatureCollectionEnd,
 )
 from castellan.app.api.issued_credential import (
     IssuedCredentialCollectionEnd,
@@ -261,6 +263,14 @@ def create_app(
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/credentials/signatures",
         MultisigCredentialSignatureCollectionEnd(identifier_svc),
+    )
+    falcon_app.add_route(
+        "/multisig/identifiers/{multisig_id}/revocations",
+        MultisigRevocationCollectionEnd(identifier_svc),
+    )
+    falcon_app.add_route(
+        "/multisig/identifiers/{multisig_id}/revocations/signatures",
+        MultisigRevocationSignatureCollectionEnd(identifier_svc),
     )
     falcon_app.add_route(
         "/multisig/identifiers/{multisig_id}/witnesses",

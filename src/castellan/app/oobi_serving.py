@@ -106,6 +106,7 @@ def create_app(
     msg_svc = MessageService()
     kel_svc = KeyEventLogService(hby=hby)
     grant_svc = GrantService(hby=hby)
+    schema_svc = SchemaService(hby=hby)
     field_tracking_svc = SchemaFieldTrackingService()
     issued_svc = IssuedCredentialService(
         hby=hby,
@@ -119,6 +120,7 @@ def create_app(
         account_service=account_svc,
         issued_svc=issued_svc,
         kelSvc=kel_svc,
+        schema_svc=schema_svc,
         grant_svc=grant_svc,
         parser=parser,
         kvy=kvy,

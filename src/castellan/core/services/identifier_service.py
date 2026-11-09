@@ -122,6 +122,9 @@ class MultisigIdentifier(UploadedIdentifier):
     credential_attachment = StringField(required=False)
     grant = DictField(required=False)
     registry = EmbeddedDocumentField(Registry, required=False)
+    revocation_credential_said = StringField(
+        required=False
+    )  # SAID of credential being revoked
 
     witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
     witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
@@ -1204,7 +1207,7 @@ class IdentifierService:
         acdc.extend(multisig.credential_attachment.encode("utf-8"))
 
         # Build Grant with all member grant signatures
-        kever = self.kvy.kevers.get(ixn_serder.pre)
+        kever = self.kvy.kevers.get(multisig.aid)
         seal = SealEvent(
             i=kever.prefixer.qb64, s="{:x}".format(kever.lastEst.s), d=kever.lastEst.d
         )
@@ -1276,6 +1279,270 @@ class IdentifierService:
         self.kelSvc.capture_rpys(multisig.aid)
 
         logger.info(f"Committed credential for multisig {multisig.id}")
+
+    def create_multisig_revocation(
+        self,
+        multisig_id: str,
+        account_aid: str,
+        rev: dict,
+        rev_attachment: str,
+        ixn: dict,
+        ixn_siger: Siger,
+        credential_said: str,
+    ) -> MultisigIdentifier:
+        """
+        Initiate credential revocation for a multisig identifier.
+
+        This method handles the first member's initiation of credential revocation.
+        It stores the REV and IXN events along with the member's IXN signature.
+        If the signing member's signature alone satisfies the multisig threshold,
+        the revocation is immediately finalized. Otherwise, the events and signature
+        are stored as pending, awaiting additional member signatures.
+
+        Args:
+            multisig_id: The MongoDB ObjectId of the multisig identifier document.
+            account_aid: The AID of the account initiating credential revocation.
+            rev: The REV TEL event as a dict (KERI SAD).
+            rev_attachment: The CESR attachment for the REV event.
+            ixn: The IXN event as a dict (KERI SAD).
+            ixn_siger: The Siger (signature) object for the IXN event.
+            credential_said: The SAID of the credential being revoked.
+
+        Returns:
+            The updated MultisigIdentifier document. If threshold was satisfied,
+            credential status is updated to revoked and pending fields cleared.
+            If pending signatures are needed, current_event contains the IXN,
+            current_tel_event contains the REV, and the member's signature is stored.
+
+        Raises:
+            ValueError: If required parameters are missing or events fail to parse.
+            NotFoundError: If the multisig identifier does not exist.
+            PermissionError: If account_aid is not a member of the multisig.
+        """
+        if not multisig_id:
+            raise ValueError("multisig_id is required")
+        if not account_aid:
+            raise ValueError("account_aid is required")
+        if not rev:
+            raise ValueError("rev is required")
+        if not rev_attachment:
+            raise ValueError("rev_attachment is required")
+        if not ixn:
+            raise ValueError("ixn is required")
+        if not credential_said:
+            raise ValueError("credential_said is required")
+
+        # Load the multisig identifier
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        # Verify account_aid is in the members list
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to revoke credential for this multisig"
+            )
+
+        # Parse and validate all the events
+        try:
+            rev_event = SerderKERI(sad=rev)
+        except Exception as e:
+            raise ValueError(f"Failed to parse rev event: {e}")
+
+        try:
+            ixn_event = SerderKERI(sad=ixn)
+        except Exception as e:
+            raise ValueError(f"Failed to parse ixn event: {e}")
+
+        logger.info(
+            f"Creating revocation for multisig {multisig_id} by account {account_aid}"
+        )
+
+        # Store events and first member's signature
+        multisig.current_event = ixn_event.ked
+        multisig.current_tel_event = rev_event.ked
+        multisig.current_tel_attachment = rev_attachment
+        multisig.revocation_credential_said = credential_said
+        multisig.members[member_idx].current_signature = ixn_siger.qb64
+        multisig.members[member_idx].current_lead = True
+
+        if multisig.will_satisfy_threshold():
+            self.commit_multisig_revocation(multisig)
+
+        multisig.save()
+
+        logger.info(
+            f"Created revocation for multisig {multisig_id} by account {account_aid}"
+        )
+
+        return multisig
+
+    def add_multisig_revocation_signatures(
+        self,
+        multisig_id: str,
+        account_aid: str,
+        ixn_said: str,
+        ixn_siger: Siger,
+    ) -> MultisigIdentifier:
+        """
+        Add signatures from an additional member for credential revocation.
+
+        This method allows additional members to add their signatures to a pending
+        credential revocation. It validates the SAID matches the pending event and
+        stores the member's signature. If the threshold is satisfied after adding
+        the signature, the revocation is committed.
+
+        Args:
+            multisig_id: The MongoDB ObjectId of the multisig identifier document.
+            account_aid: The AID of the account adding signatures.
+            ixn_said: The SAID of the IXN event to verify it matches pending event.
+            ixn_siger: The Siger (signature) object for the IXN event.
+
+        Returns:
+            The updated MultisigIdentifier document. If threshold was satisfied,
+            credential status is updated to revoked and pending fields cleared.
+
+        Raises:
+            ValueError: If SAID doesn't match pending event or no pending revocation.
+            NotFoundError: If the multisig identifier does not exist.
+            PermissionError: If account_aid is not a member of the multisig.
+        """
+        if not multisig_id:
+            raise ValueError("multisig_id is required")
+        if not account_aid:
+            raise ValueError("account_aid is required")
+        if not ixn_said:
+            raise ValueError("ixn_said is required")
+
+        # Load the multisig identifier
+        try:
+            multisig = MultisigIdentifier.objects.get(id=ObjectId(multisig_id))
+        except DoesNotExist:
+            raise NotFoundError(f"Multisig identifier not found: {multisig_id}")
+
+        logger.info(f"Adding revocation signatures for multisig {multisig_id}")
+
+        # Verify account_aid is in the members list
+        member_idx = -1
+        for idx, member in enumerate(multisig.members):
+            if member.account_aid == account_aid:
+                member_idx = idx
+                break
+
+        if member_idx == -1:
+            raise PermissionError(
+                f"Account {account_aid} is not authorized to sign for this multisig"
+            )
+
+        # Validate SAID matches pending event
+        if not multisig.current_event:
+            raise ValueError("No pending revocation for this multisig")
+
+        if multisig.current_event.get("d") != ixn_said:
+            raise ValueError(
+                f"IXN SAID {ixn_said} does not match pending event {multisig.current_event.get('d')}"
+            )
+
+        # Verify this is a revocation (check revocation_credential_said is set)
+        if not multisig.revocation_credential_said:
+            raise ValueError("No pending revocation for this multisig")
+
+        # Store member's signature
+        multisig.members[member_idx].current_signature = ixn_siger.qb64
+
+        if multisig.will_satisfy_threshold():
+            self.commit_multisig_revocation(multisig)
+
+        multisig.save()
+
+        logger.info(
+            f"Added revocation signatures for multisig {multisig_id} by account {account_aid}"
+        )
+
+        return multisig
+
+    def commit_multisig_revocation(self, multisig: MultisigIdentifier):
+        """
+        Commit a credential revocation after threshold is satisfied.
+
+        This method reconstructs CESR messages from stored SADs and collected
+        signatures, processes them through the parser/kvy/tvy, and updates
+        the credential status to revoked. It clears all pending fields after
+        successful commit.
+
+        Args:
+            multisig: The MultisigIdentifier with pending revocation events and
+                      collected signatures that satisfy the threshold.
+
+        Raises:
+            RuntimeError: If parser/kvy/tvy are not configured.
+            ValueError: If revocation processing fails.
+        """
+        if self.parser is None or self.kvy is None or self.tvy is None:
+            raise RuntimeError(
+                "IdentifierService requires parser, kvy, and tvy to process revocation"
+            )
+
+        # Round trip current_event with json to avoid messiness between MongoEngine and dataclass asdict
+        sad = json.loads(json.dumps(multisig.current_event))
+        ixn_serder = SerderKERI(sad=sad)
+        rev_serder = SerderKERI(sad=multisig.current_tel_event)
+
+        # Build REV with attachment
+        rev = bytearray(rev_serder.raw)
+        rev.extend(multisig.current_tel_attachment.encode("utf-8"))
+
+        try:
+            # Process IXN with collected signatures
+            self.kvy.processEvent(
+                serder=ixn_serder,
+                sigers=[
+                    Siger(qb64=member.current_signature)
+                    for member in multisig.members
+                    if member.current_signature is not None
+                ],
+            )
+
+            # Process REV
+            self.parser.parse(ims=rev, local=True)
+            self.kvy.processEscrows()
+            self.tvy.processEscrows()
+
+        except Exception as e:
+            logger.exception(f"An error occurred processing revocation: {e}")
+            raise ValueError(f"An error occurred processing revocation: {e}")
+
+        # Update credential status to revoked
+        credential_said = multisig.revocation_credential_said
+        self.issued_svc.update_credential_status(credential_said, "revoked")
+        regk = multisig.registry.registry_pre
+
+        # Clear pending fields
+        multisig.key_state = asdict(self.hby.kvy.kevers[multisig.aid].state())
+        multisig.current_event = None
+        multisig.current_tel_event = None
+        multisig.current_tel_attachment = None
+        multisig.revocation_credential_said = None
+        for member in multisig.members:
+            member.current_signature = None
+            member.current_lead = False
+
+        multisig.save()
+
+        # Capture KEL
+        self.kelSvc.capture_kel(multisig.aid)
+        self.kelSvc.scan_for_delegates(multisig.aid)
+        self.kelSvc.capture_rpys(multisig.aid)
+        self.issued_svc.capture_tel_events(multisig.aid, regk, credential_said)
+
+        logger.info(f"Committed revocation for multisig {multisig.id}")
 
     @staticmethod
     def set_witness_rotate(
