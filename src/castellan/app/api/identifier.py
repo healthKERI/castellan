@@ -98,6 +98,11 @@ def _serialize_multisig(identifier) -> dict:
         if identifier.witnesses
     ]
     data["current_metadata"] = identifier.current_metadata or {}
+    data["revocation_credential_said"] = (
+        identifier.revocation_credential_said
+        if hasattr(identifier, "revocation_credential_said")
+        else None
+    )
 
     return data
 
@@ -1001,6 +1006,172 @@ class MultisigCredentialSignatureCollectionEnd:
                 ixn_siger=Siger(qb64=body.get("ixn_siger")),
                 grant_said=body.get("grant_said"),
                 grant_siger=Siger(qb64=body.get("grant_siger")),
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except PermissionError as e:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description=str(e),
+            )
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_200
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+
+class MultisigRevocationCollectionEnd:
+    """Handles POST /multisig/identifiers/{multisig_id}/revocations — Initiate credential revocation."""
+
+    def __init__(self, identifierSvc):
+        self.service = identifierSvc
+
+    async def on_post(self, req, resp, multisig_id):
+        """
+        Initiate credential revocation for a multisig identifier.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (application/json):
+            rev — dict: REV TEL event SAD
+            rev_attachment — str: CESR attachment for REV
+            ixn — dict: IXN event SAD
+            ixn_siger — str: qb64 signature for IXN
+            credential_said — str: SAID of credential being revoked
+
+        The account_aid is derived from req.context.account (authenticated caller).
+
+        Response (201): updated MultisigIdentifier document with pending revocation.
+        Response (400): if required fields are missing or parse failure.
+        Response (401): if the account is not authorized (not in members list).
+        Response (404): if the multisig identifier is not found.
+        """
+        # Get the account from the authenticated context
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
+            )
+        account_aid = account.aid
+
+        body = await req.get_media()
+
+        if "rev" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'rev' is required."
+            )
+        if "rev_attachment" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'rev_attachment' is required."
+            )
+        if "ixn" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn' is required."
+            )
+        if "ixn_siger" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn_siger' is required."
+            )
+        if "credential_said" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'credential_said' is required."
+            )
+
+        try:
+            multisig = self.service.create_multisig_revocation(
+                multisig_id=multisig_id,
+                account_aid=account_aid,
+                rev=body.get("rev"),
+                rev_attachment=body.get("rev_attachment"),
+                ixn=body.get("ixn"),
+                ixn_siger=Siger(qb64=body.get("ixn_siger")),
+                credential_said=body.get("credential_said"),
+            )
+        except NotFoundError as e:
+            raise falcon.HTTPNotFound(title="Not Found", description=str(e))
+        except PermissionError as e:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description=str(e),
+            )
+        except ValueError as e:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request",
+                description=str(e),
+            )
+        except Exception as e:
+            raise falcon.HTTPInternalServerError(
+                title="Internal Server Error",
+                description=f"An unexpected error occurred: {e}",
+            )
+
+        resp.status = falcon.HTTP_201
+        resp.content_type = "application/json"
+        resp.media = _serialize_multisig(multisig)
+
+
+class MultisigRevocationSignatureCollectionEnd:
+    """Handles POST /multisig/identifiers/{multisig_id}/revocations/signatures — add member signatures for revocation."""
+
+    def __init__(self, identifierSvc):
+        self.service = identifierSvc
+
+    async def on_post(self, req, resp, multisig_id):
+        """
+        Add signature from additional member for credential revocation.
+
+        Path parameters:
+            multisig_id — The multisig identifier ID
+
+        Request body (application/json):
+            ixn_said — str: SAID of the IXN event to verify
+            ixn_siger — str: qb64 signature for IXN
+
+        The account_aid is derived from req.context.account (authenticated caller).
+
+        Response (200): updated MultisigIdentifier document.
+        Response (400): if required fields are missing or SAIDs don't match.
+        Response (401): if the account is not authorized (not in members list).
+        Response (404): if the multisig identifier is not found.
+        """
+        # Get the account from the authenticated context
+        account = getattr(req.context, "account", None)
+        if not account:
+            raise falcon.HTTPUnauthorized(
+                title="Unauthorized",
+                description="Authentication required. Account not found in request context.",
+            )
+        account_aid = account.aid
+
+        body = await req.get_media()
+
+        if "ixn_said" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn_said' is required."
+            )
+        if "ixn_siger" not in body:
+            raise falcon.HTTPBadRequest(
+                title="Bad Request", description="'ixn_siger' is required."
+            )
+
+        try:
+            multisig = self.service.add_multisig_revocation_signatures(
+                multisig_id=multisig_id,
+                account_aid=account_aid,
+                ixn_said=body.get("ixn_said"),
+                ixn_siger=Siger(qb64=body.get("ixn_siger")),
             )
         except NotFoundError as e:
             raise falcon.HTTPNotFound(title="Not Found", description=str(e))

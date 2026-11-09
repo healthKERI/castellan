@@ -10,6 +10,8 @@ from castellan.app.api.identifier import (
     MultisigRegsitrySignatureCollectionEnd,
     MultisigIdentifierCredentialCollectionEnd,
     MultisigCredentialSignatureCollectionEnd,
+    MultisigRevocationCollectionEnd,
+    MultisigRevocationSignatureCollectionEnd,
     RotateWitnessInfoEnd,
     RotateWitnessSignEnd,
 )
@@ -1001,4 +1003,436 @@ class TestRotateWitnessSignEnd:
         resp = Mock()
 
         with pytest.raises(falcon.HTTPUnauthorized):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+
+class TestMultisigRevocationCollectionEnd:
+    """Test suite for MultisigRevocationCollectionEnd (POST /multisig/identifiers/{multisig_id}/revocations)"""
+
+    def setup_method(self):
+        self.service = Mock()
+        self.end = MultisigRevocationCollectionEnd(self.service)
+        self.req = Mock()
+
+    def _mock_authenticated_request(self):
+        """Set up request with authenticated account"""
+        mock_account = Mock()
+        mock_account.aid = "EAccountAID"
+        self.req.context.account = mock_account
+        return mock_account
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_creates_revocation_successfully(self, mock_siger_cls):
+        """Test POST /revocations creates revocation with valid JSON body"""
+        self._mock_authenticated_request()
+
+        mock_siger = Mock()
+        mock_siger_cls.return_value = mock_siger
+
+        mock_multisig = Mock()
+        mock_multisig.id = "multisig123"
+        mock_multisig.aid = "EMultisigAID"
+        mock_multisig.alias = "test-multisig"
+        mock_multisig.oobi = ""
+        mock_multisig.mailbox = False
+        mock_multisig.created_at = None
+        mock_multisig.members = []
+        mock_multisig.signing_threshold = 2
+        mock_multisig.rotation_threshold = 2
+        mock_multisig.key_state = {}
+        mock_multisig.current_event = {}
+        mock_multisig.current_tel_event = {}
+        mock_multisig.mbx = {}
+        mock_multisig.rgr = {}
+        mock_multisig.registry = None
+        mock_multisig.credential = {}
+        mock_multisig.grant = {}
+        mock_multisig.witness_rotate = None
+        mock_multisig.witnesses = []
+        mock_multisig.current_metadata = {}
+        mock_multisig.revocation_credential_said = "ECredSAID"
+
+        self.service.create_multisig_revocation.return_value = mock_multisig
+
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"v": "KERI10JSON000000_", "t": "rev", "d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"v": "KERI10JSON000000_", "t": "ixn", "d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        await self.end.on_post(self.req, resp, "multisig123")
+
+        assert resp.status == falcon.HTTP_201
+        assert resp.content_type == "application/json"
+        self.service.create_multisig_revocation.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_401_when_not_authenticated(self):
+        """Test POST /revocations returns 401 when no account in context"""
+        self.req.context = Mock(spec=[])  # No account attribute
+        self.req.get_media = AsyncMock(return_value={})
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPUnauthorized):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_400_when_rev_missing(self):
+        """Test POST /revocations returns 400 when rev is missing"""
+        self._mock_authenticated_request()
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest) as exc_info:
+            await self.end.on_post(self.req, resp, "multisig123")
+        assert "'rev' is required" in str(exc_info.value.description)
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_400_when_rev_attachment_missing(self):
+        """Test POST /revocations returns 400 when rev_attachment is missing"""
+        self._mock_authenticated_request()
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "ixn": {"d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest) as exc_info:
+            await self.end.on_post(self.req, resp, "multisig123")
+        assert "'rev_attachment' is required" in str(exc_info.value.description)
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_400_when_ixn_missing(self):
+        """Test POST /revocations returns 400 when ixn is missing"""
+        self._mock_authenticated_request()
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest) as exc_info:
+            await self.end.on_post(self.req, resp, "multisig123")
+        assert "'ixn' is required" in str(exc_info.value.description)
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_400_when_ixn_siger_missing(self):
+        """Test POST /revocations returns 400 when ixn_siger is missing"""
+        self._mock_authenticated_request()
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"d": "ESAID2"},
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest) as exc_info:
+            await self.end.on_post(self.req, resp, "multisig123")
+        assert "'ixn_siger' is required" in str(exc_info.value.description)
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_400_when_credential_said_missing(self):
+        """Test POST /revocations returns 400 when credential_said is missing"""
+        self._mock_authenticated_request()
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest) as exc_info:
+            await self.end.on_post(self.req, resp, "multisig123")
+        assert "'credential_said' is required" in str(exc_info.value.description)
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_404_when_multisig_not_found(self, mock_siger_cls):
+        """Test POST /revocations returns 404 when multisig not found"""
+        self._mock_authenticated_request()
+        self.service.create_multisig_revocation.side_effect = NotFoundError(
+            "Multisig identifier not found"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPNotFound):
+            await self.end.on_post(self.req, resp, "nonexistent")
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_401_when_not_authorized(self, mock_siger_cls):
+        """Test POST /revocations returns 401 when account not authorized"""
+        self._mock_authenticated_request()
+        self.service.create_multisig_revocation.side_effect = PermissionError(
+            "Account not authorized"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPUnauthorized):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_400_for_value_error(self, mock_siger_cls):
+        """Test POST /revocations returns 400 for ValueError"""
+        self._mock_authenticated_request()
+        self.service.create_multisig_revocation.side_effect = ValueError(
+            "Failed to parse rev event"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_500_for_unexpected_error(self, mock_siger_cls):
+        """Test POST /revocations returns 500 for unexpected errors"""
+        self._mock_authenticated_request()
+        self.service.create_multisig_revocation.side_effect = Exception(
+            "Unexpected database error"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "rev": {"d": "ESAID1"},
+                "rev_attachment": "-AABAAattachment",
+                "ixn": {"d": "ESAID2"},
+                "ixn_siger": "AABBsig",
+                "credential_said": "ECredentialSAID",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPInternalServerError):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+
+class TestMultisigRevocationSignatureCollectionEnd:
+    """Test suite for MultisigRevocationSignatureCollectionEnd (POST /revocations/signatures)"""
+
+    def setup_method(self):
+        self.service = Mock()
+        self.end = MultisigRevocationSignatureCollectionEnd(self.service)
+        self.req = Mock()
+
+    def _mock_authenticated_request(self):
+        """Set up request with authenticated account"""
+        mock_account = Mock()
+        mock_account.aid = "EAccountAID"
+        self.req.context.account = mock_account
+        return mock_account
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_adds_signatures_successfully(self, mock_siger_cls):
+        """Test POST /revocations/signatures adds signatures successfully"""
+        self._mock_authenticated_request()
+
+        mock_multisig = Mock()
+        mock_multisig.id = "multisig123"
+        mock_multisig.aid = "EMultisigAID"
+        mock_multisig.alias = "test-multisig"
+        mock_multisig.oobi = ""
+        mock_multisig.mailbox = False
+        mock_multisig.created_at = None
+        mock_multisig.members = []
+        mock_multisig.signing_threshold = 2
+        mock_multisig.rotation_threshold = 2
+        mock_multisig.key_state = {}
+        mock_multisig.current_event = {}
+        mock_multisig.current_tel_event = {}
+        mock_multisig.mbx = {}
+        mock_multisig.rgr = {}
+        mock_multisig.registry = None
+        mock_multisig.credential = {}
+        mock_multisig.grant = {}
+        mock_multisig.witness_rotate = None
+        mock_multisig.witnesses = []
+        mock_multisig.current_metadata = {}
+        mock_multisig.revocation_credential_said = "ECredSAID"
+
+        self.service.add_multisig_revocation_signatures.return_value = mock_multisig
+
+        self.req.get_media = AsyncMock(
+            return_value={
+                "ixn_said": "ESAID123",
+                "ixn_siger": "AABBixnsig",
+            }
+        )
+        resp = Mock()
+
+        await self.end.on_post(self.req, resp, "multisig123")
+
+        assert resp.status == falcon.HTTP_200
+        assert resp.content_type == "application/json"
+        self.service.add_multisig_revocation_signatures.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_401_when_not_authenticated(self):
+        """Test POST /revocations/signatures returns 401 when no account"""
+        self.req.context = Mock(spec=[])  # No account attribute
+        self.req.get_media = AsyncMock(return_value={})
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPUnauthorized):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_400_when_ixn_said_missing(self):
+        """Test POST /revocations/signatures returns 400 when ixn_said missing"""
+        self._mock_authenticated_request()
+        self.req.get_media = AsyncMock(
+            return_value={
+                "ixn_siger": "AABBixnsig",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest) as exc_info:
+            await self.end.on_post(self.req, resp, "multisig123")
+        assert "'ixn_said' is required" in str(exc_info.value.description)
+
+    @pytest.mark.asyncio
+    async def test_on_post_returns_400_when_ixn_siger_missing(self):
+        """Test POST /revocations/signatures returns 400 when ixn_siger missing"""
+        self._mock_authenticated_request()
+        self.req.get_media = AsyncMock(
+            return_value={
+                "ixn_said": "ESAID123",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest) as exc_info:
+            await self.end.on_post(self.req, resp, "multisig123")
+        assert "'ixn_siger' is required" in str(exc_info.value.description)
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_404_when_multisig_not_found(self, mock_siger_cls):
+        """Test POST /revocations/signatures returns 404 when multisig not found"""
+        self._mock_authenticated_request()
+        self.service.add_multisig_revocation_signatures.side_effect = NotFoundError(
+            "Multisig identifier not found"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "ixn_said": "ESAID123",
+                "ixn_siger": "AABBixnsig",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPNotFound):
+            await self.end.on_post(self.req, resp, "nonexistent")
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_401_when_not_authorized(self, mock_siger_cls):
+        """Test POST /revocations/signatures returns 401 when not authorized"""
+        self._mock_authenticated_request()
+        self.service.add_multisig_revocation_signatures.side_effect = PermissionError(
+            "Account not authorized"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "ixn_said": "ESAID123",
+                "ixn_siger": "AABBixnsig",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPUnauthorized):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_400_when_said_mismatch(self, mock_siger_cls):
+        """Test POST /revocations/signatures returns 400 when SAIDs don't match"""
+        self._mock_authenticated_request()
+        self.service.add_multisig_revocation_signatures.side_effect = ValueError(
+            "IXN SAID does not match pending event"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "ixn_said": "ESAID_WRONG",
+                "ixn_siger": "AABBixnsig",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPBadRequest):
+            await self.end.on_post(self.req, resp, "multisig123")
+
+    @pytest.mark.asyncio
+    @patch("castellan.app.api.identifier.Siger")
+    async def test_on_post_returns_500_for_unexpected_error(self, mock_siger_cls):
+        """Test POST /revocations/signatures returns 500 for unexpected errors"""
+        self._mock_authenticated_request()
+        self.service.add_multisig_revocation_signatures.side_effect = Exception(
+            "Database error"
+        )
+        self.req.get_media = AsyncMock(
+            return_value={
+                "ixn_said": "ESAID123",
+                "ixn_siger": "AABBixnsig",
+            }
+        )
+        resp = Mock()
+
+        with pytest.raises(falcon.HTTPInternalServerError):
             await self.end.on_post(self.req, resp, "multisig123")

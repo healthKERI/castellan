@@ -694,3 +694,282 @@ class TestCreateMultisigRegistry:
                 registrar_siger=mock_siger,
                 body={},
             )
+
+
+class TestCreateMultisigRevocationValidation:
+    """Test suite for IdentifierService.create_multisig_revocation input validation"""
+
+    def setup_method(self):
+        self.mock_account_service = Mock()
+        self.mock_issued_svc = Mock()
+        self.mock_grant_svc = Mock()
+        self.mock_parser = Mock()
+        self.mock_kvy = Mock()
+        self.mock_hby = Mock()
+        self.mock_kelSvc = Mock()
+        self.mock_tvy = Mock()
+        self.mock_verifier = Mock()
+        self.mock_rgy = Mock()
+
+        self.service = IdentifierService(
+            account_service=self.mock_account_service,
+            issued_svc=self.mock_issued_svc,
+            grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
+            kelSvc=self.mock_kelSvc,
+            parser=self.mock_parser,
+            kvy=self.mock_kvy,
+            hby=self.mock_hby,
+            tvy=self.mock_tvy,
+            verifier=self.mock_verifier,
+            rgy=self.mock_rgy,
+        )
+
+    def test_raises_value_error_when_multisig_id_empty(self):
+        """Test create_multisig_revocation raises ValueError when multisig_id empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="multisig_id is required"):
+            self.service.create_multisig_revocation(
+                multisig_id="",
+                account_aid="EAccount",
+                rev={"d": "ESAID"},
+                rev_attachment="-AAB",
+                ixn={"d": "ESAID"},
+                ixn_siger=mock_siger,
+                credential_said="ECredSAID",
+            )
+
+    def test_raises_value_error_when_account_aid_empty(self):
+        """Test create_multisig_revocation raises ValueError when account_aid empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="account_aid is required"):
+            self.service.create_multisig_revocation(
+                multisig_id="multisig123",
+                account_aid="",
+                rev={"d": "ESAID"},
+                rev_attachment="-AAB",
+                ixn={"d": "ESAID"},
+                ixn_siger=mock_siger,
+                credential_said="ECredSAID",
+            )
+
+    def test_raises_value_error_when_rev_empty(self):
+        """Test create_multisig_revocation raises ValueError when rev empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="rev is required"):
+            self.service.create_multisig_revocation(
+                multisig_id="multisig123",
+                account_aid="EAccount",
+                rev={},
+                rev_attachment="-AAB",
+                ixn={"d": "ESAID"},
+                ixn_siger=mock_siger,
+                credential_said="ECredSAID",
+            )
+
+    def test_raises_value_error_when_rev_attachment_empty(self):
+        """Test create_multisig_revocation raises ValueError when rev_attachment empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="rev_attachment is required"):
+            self.service.create_multisig_revocation(
+                multisig_id="multisig123",
+                account_aid="EAccount",
+                rev={"d": "ESAID"},
+                rev_attachment="",
+                ixn={"d": "ESAID"},
+                ixn_siger=mock_siger,
+                credential_said="ECredSAID",
+            )
+
+    def test_raises_value_error_when_ixn_empty(self):
+        """Test create_multisig_revocation raises ValueError when ixn empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="ixn is required"):
+            self.service.create_multisig_revocation(
+                multisig_id="multisig123",
+                account_aid="EAccount",
+                rev={"d": "ESAID"},
+                rev_attachment="-AAB",
+                ixn={},
+                ixn_siger=mock_siger,
+                credential_said="ECredSAID",
+            )
+
+    def test_raises_value_error_when_credential_said_empty(self):
+        """Test create_multisig_revocation raises ValueError when credential_said empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="credential_said is required"):
+            self.service.create_multisig_revocation(
+                multisig_id="multisig123",
+                account_aid="EAccount",
+                rev={"d": "ESAID"},
+                rev_attachment="-AAB",
+                ixn={"d": "ESAID"},
+                ixn_siger=mock_siger,
+                credential_said="",
+            )
+
+
+class TestAddMultisigRevocationSignaturesValidation:
+    """Test suite for IdentifierService.add_multisig_revocation_signatures input validation"""
+
+    def setup_method(self):
+        self.mock_account_service = Mock()
+        self.mock_issued_svc = Mock()
+        self.mock_grant_svc = Mock()
+        self.mock_parser = Mock()
+        self.mock_kvy = Mock()
+        self.mock_hby = Mock()
+        self.mock_kelSvc = Mock()
+        self.mock_tvy = Mock()
+        self.mock_verifier = Mock()
+        self.mock_rgy = Mock()
+
+        self.service = IdentifierService(
+            account_service=self.mock_account_service,
+            issued_svc=self.mock_issued_svc,
+            grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
+            kelSvc=self.mock_kelSvc,
+            parser=self.mock_parser,
+            kvy=self.mock_kvy,
+            hby=self.mock_hby,
+            tvy=self.mock_tvy,
+            verifier=self.mock_verifier,
+            rgy=self.mock_rgy,
+        )
+
+    def test_raises_value_error_when_multisig_id_empty(self):
+        """Test add_multisig_revocation_signatures raises ValueError when multisig_id empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="multisig_id is required"):
+            self.service.add_multisig_revocation_signatures(
+                multisig_id="",
+                account_aid="EAccount",
+                ixn_said="ESAID1",
+                ixn_siger=mock_siger,
+            )
+
+    def test_raises_value_error_when_account_aid_empty(self):
+        """Test add_multisig_revocation_signatures raises ValueError when account_aid empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="account_aid is required"):
+            self.service.add_multisig_revocation_signatures(
+                multisig_id="multisig123",
+                account_aid="",
+                ixn_said="ESAID1",
+                ixn_siger=mock_siger,
+            )
+
+    def test_raises_value_error_when_ixn_said_empty(self):
+        """Test add_multisig_revocation_signatures raises ValueError when ixn_said empty"""
+        mock_siger = Mock()
+        mock_siger.qb64 = "AABBsig"
+
+        with pytest.raises(ValueError, match="ixn_said is required"):
+            self.service.add_multisig_revocation_signatures(
+                multisig_id="multisig123",
+                account_aid="EAccount",
+                ixn_said="",
+                ixn_siger=mock_siger,
+            )
+
+
+class TestCommitMultisigRevocation:
+    """Test suite for IdentifierService.commit_multisig_revocation"""
+
+    def setup_method(self):
+        self.mock_account_service = Mock()
+        self.mock_issued_svc = Mock()
+        self.mock_grant_svc = Mock()
+        self.mock_parser = Mock()
+        self.mock_kvy = Mock()
+        self.mock_hby = Mock()
+        self.mock_kelSvc = Mock()
+        self.mock_tvy = Mock()
+        self.mock_verifier = Mock()
+        self.mock_rgy = Mock()
+
+        self.service = IdentifierService(
+            account_service=self.mock_account_service,
+            issued_svc=self.mock_issued_svc,
+            grant_svc=self.mock_grant_svc,
+            schema_svc=Mock(),
+            kelSvc=self.mock_kelSvc,
+            parser=self.mock_parser,
+            kvy=self.mock_kvy,
+            hby=self.mock_hby,
+            tvy=self.mock_tvy,
+            verifier=self.mock_verifier,
+            rgy=self.mock_rgy,
+        )
+
+    def test_raises_runtime_error_when_parser_none(self):
+        """Test commit_multisig_revocation raises RuntimeError when parser is None"""
+        service = IdentifierService(
+            account_service=Mock(),
+            issued_svc=Mock(),
+            grant_svc=Mock(),
+            schema_svc=Mock(),
+            parser=None,
+            kvy=Mock(),
+            tvy=Mock(),
+        )
+        mock_multisig = Mock()
+
+        with pytest.raises(
+            RuntimeError, match="requires parser, kvy, and tvy to process revocation"
+        ):
+            service.commit_multisig_revocation(mock_multisig)
+
+    def test_raises_runtime_error_when_kvy_none(self):
+        """Test commit_multisig_revocation raises RuntimeError when kvy is None"""
+        service = IdentifierService(
+            account_service=Mock(),
+            issued_svc=Mock(),
+            grant_svc=Mock(),
+            schema_svc=Mock(),
+            parser=Mock(),
+            kvy=None,
+            tvy=Mock(),
+        )
+        mock_multisig = Mock()
+
+        with pytest.raises(
+            RuntimeError, match="requires parser, kvy, and tvy to process revocation"
+        ):
+            service.commit_multisig_revocation(mock_multisig)
+
+    def test_raises_runtime_error_when_tvy_none(self):
+        """Test commit_multisig_revocation raises RuntimeError when tvy is None"""
+        service = IdentifierService(
+            account_service=Mock(),
+            issued_svc=Mock(),
+            grant_svc=Mock(),
+            schema_svc=Mock(),
+            parser=Mock(),
+            kvy=Mock(),
+            tvy=None,
+        )
+        mock_multisig = Mock()
+
+        with pytest.raises(
+            RuntimeError, match="requires parser, kvy, and tvy to process revocation"
+        ):
+            service.commit_multisig_revocation(mock_multisig)

@@ -361,6 +361,27 @@ class IssuedCredentialService:
             raise RuntimeError(f"Error deleting issued credential: {e}")
         logger.info(f"Deleted issued credential: {said}")
 
+    def update_credential_status(self, said: str, status: str):
+        """
+        Update the status of an IssuedCredential.
+
+        Args:
+            said: The SAID of the credential to update.
+            status: The new status (e.g., "issued", "revoked").
+
+        Raises:
+            NotFoundError: If the credential is not found.
+            RuntimeError: If update fails.
+        """
+        cred = self.get_credential(said)
+        try:
+            cred.status = status
+            cred.updated_at = datetime.now()
+            cred.save()
+        except Exception as e:
+            raise RuntimeError(f"Error updating credential status: {e}")
+        logger.info(f"Updated credential {said} status to: {status}")
+
     @staticmethod
     def get_tel_events(credential_said: str) -> list:
         """
