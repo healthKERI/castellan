@@ -122,7 +122,9 @@ class MultisigIdentifier(UploadedIdentifier):
     credential_attachment = StringField(required=False)
     grant = DictField(required=False)
     registry = EmbeddedDocumentField(Registry, required=False)
-    revocation_credential_said = StringField(required=False)  # SAID of credential being revoked
+    revocation_credential_said = StringField(
+        required=False
+    )  # SAID of credential being revoked
 
     witness_rotate = EmbeddedDocumentField(Witnesses, required=False)
     witnesses = ListField(EmbeddedDocumentField(Witness), required=False)
